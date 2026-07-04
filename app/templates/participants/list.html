@@ -1,0 +1,50 @@
+{% extends "app_shell.html" %}
+{% block content %}
+<div class="page-block">
+  <h1 class="page-title">Liste des Participants</h1>
+  <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
+
+  {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
+
+  <form method="post" class="table-form">
+    <div class="table-card">
+      <div class="table-row table-header">
+        <div class="col col-check"></div>
+        <div class="col col-part-name">Participants Name</div>
+        <div class="col col-part-cat">Category Name</div>
+        <div class="col col-part-code">Code</div>
+        <div class="col col-part-act">Act Ref.</div>
+      </div>
+
+      {% if not participants %}
+        <div class="table-empty">Aucun participant enregistré pour cette édition.</div>
+      {% endif %}
+
+      {% for p in participants %}
+        <div class="table-row">
+          <div class="col col-check">
+            <input type="checkbox" name="selected_ids" value="{{ p.id }}">
+          </div>
+          <div class="col col-part-name">{{ p.participant_name }}</div>
+          <div class="col col-part-cat">{{ p.category_label() }}</div>
+          <div class="col col-part-code">{{ p.code }}</div>
+          <div class="col col-part-act">
+            <!-- Bascule gérée en JS (fetch), volontairement hors de tout formulaire -->
+            <input type="checkbox" class="act-ref-toggle" data-participant-id="{{ p.id }}"
+                   {{ 'checked' if p.active_ref else '' }}>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="actions">
+      <a href="{{ url_for('participants.add_participant') }}" class="btn btn-primary btn-add-link">Ajouter</a>
+      <button type="submit" formaction="{{ url_for('participants.edit_selected') }}" class="btn btn-secondary">Modifier</button>
+      <button type="submit" formaction="{{ url_for('participants.delete_selected') }}" class="btn btn-secondary"
+              onclick="return confirm('Supprimer les participants sélectionnés ?');">Supprimer</button>
+    </div>
+  </form>
+</div>
+
+<script src="{{ url_for('static', filename='js/participants_list.js') }}"></script>
+{% endblock %}

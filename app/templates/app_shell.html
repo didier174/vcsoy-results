@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  <aside class="sidebar">
+    <a href="{{ url_for('main.choose_edition') }}" class="edition-block" title="Cliquer pour changer d'édition">
+      <img src="{{ url_for('static', filename='img/' ~ edition.logo_file) }}" alt="{{ edition.short_label }}" class="edition-logo">
+      <div class="edition-reminder">{{ edition.short_label }}</div>
+      <div class="edition-hint">Cliquer pour changer d'édition</div>
+    </a>
+
+    <div class="sidebar-sep"></div>
+
+    <div class="brand">VCSOY RESULTS</div>
+    <div class="user-email">{{ current_user.email }}</div>
+
+    <div class="sidebar-sep"></div>
+
+    <nav class="menu">
+      {% for item in menu_items %}
+        {% if item == "Configuration catégorie" %}
+          <a href="{{ url_for('categories.list_categories') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
+        {% elif item == "Configuration Participant" %}
+          <a href="{{ url_for('participants.list_participants') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
+        {% elif item == "Chargement d'un fichier de résultat" %}
+          <a href="{{ url_for('results.upload_page') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
+        {% else %}
+          <a href="{{ url_for('main.module', item_name=item) }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
+        {% endif %}
+      {% endfor %}
+    </nav>
+
+    <a href="{{ url_for('auth.logout') }}" class="logout-link">Fermer la session</a>
+  </aside>
+
+  <main class="content">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% endblock %}

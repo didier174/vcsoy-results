@@ -1,0 +1,141 @@
+{% extends "app_shell.html" %}
+{% block content %}
+<div class="page-block form-page">
+  <h1 class="page-title">{{ 'Ajouter un participant' if mode == 'add' else 'Modifier un participant' }}</h1>
+  <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
+
+  {% if errors %}
+    <ul class="flash flash-error error-list">
+      {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+  {% endif %}
+
+  <form method="post" class="participant-form">
+    <fieldset class="form-section">
+      <legend>Informations générales</legend>
+
+      <label>Nom du participant *
+        <input type="text" name="participant_name" value="{{ participant.participant_name or '' }}" required>
+      </label>
+
+      <label>Code *
+        <input type="text" name="code" value="{{ participant.code or '' }}" maxlength="2" placeholder="00" required>
+      </label>
+
+      <label>Catégorie *
+        {% if categories %}
+          <select name="category_id" required>
+            <option value="">— Sélectionner —</option>
+            {% for c in categories %}
+              <option value="{{ c.id }}" {{ 'selected' if participant.category_id == c.id else '' }}>
+                {{ c.label() }}{% if c.code %} ({{ c.code }}){% endif %}
+              </option>
+            {% endfor %}
+          </select>
+        {% else %}
+          <p class="flash flash-error">Aucune catégorie configurée — créez-en une dans « Configuration catégorie ».</p>
+        {% endif %}
+      </label>
+
+      <label>Nom du représentant *
+        <input type="text" name="representative_name" value="{{ participant.representative_name or '' }}" required>
+      </label>
+
+      <label>Mail du représentant
+        <input type="email" name="representative_email" value="{{ participant.representative_email or '' }}">
+      </label>
+
+      <label>Tel du participant
+        <input type="text" name="participant_phone" value="{{ participant.participant_phone or '' }}">
+      </label>
+    </fieldset>
+
+    <div class="addresses-row">
+      <fieldset class="form-section address-section">
+        <legend>Adresse du participant</legend>
+
+        <label>Adresse 1
+          <input type="text" id="pa_address1" name="participant_address1" value="{{ participant.participant_address1 or '' }}">
+        </label>
+        <label>Adresse 2
+          <input type="text" id="pa_address2" name="participant_address2" value="{{ participant.participant_address2 or '' }}">
+        </label>
+        <label>Ville
+          <input type="text" id="pa_city" name="participant_city" value="{{ participant.participant_city or '' }}">
+        </label>
+        <label>Code postal
+          <input type="text" id="pa_postal" name="participant_postal_code" value="{{ participant.participant_postal_code or '' }}">
+        </label>
+        <label>Pays
+          <select id="pa_country" name="participant_country">
+            {% for country in countries %}
+              <option value="{{ country }}" {{ 'selected' if (participant.participant_country or 'Canada') == country else '' }}>{{ country }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </fieldset>
+
+      <fieldset class="form-section address-section">
+        <legend>Adresse de facturation</legend>
+
+        <label class="same-address-label">
+          <input type="checkbox" id="same_address" {{ 'checked' if same_address_default else '' }}>
+          Identique à l'adresse du participant
+        </label>
+
+        <label>Adresse 1
+          <input type="text" id="ba_address1" name="billing_address1" value="{{ participant.billing_address1 or '' }}">
+        </label>
+        <label>Adresse 2
+          <input type="text" id="ba_address2" name="billing_address2" value="{{ participant.billing_address2 or '' }}">
+        </label>
+        <label>Ville
+          <input type="text" id="ba_city" name="billing_city" value="{{ participant.billing_city or '' }}">
+        </label>
+        <label>Code postal
+          <input type="text" id="ba_postal" name="billing_postal_code" value="{{ participant.billing_postal_code or '' }}">
+        </label>
+        <label>Pays
+          <select id="ba_country" name="billing_country">
+            {% for country in countries %}
+              <option value="{{ country }}" {{ 'selected' if (participant.billing_country or 'Canada') == country else '' }}>{{ country }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </fieldset>
+    </div>
+
+    <fieldset class="form-section">
+      <legend>Contact facturation</legend>
+
+      <label>Nom contact facturation
+        <input type="text" name="billing_contact_name" value="{{ participant.billing_contact_name or '' }}">
+      </label>
+      <label>Mail facturation
+        <input type="email" name="billing_contact_email" value="{{ participant.billing_contact_email or '' }}">
+      </label>
+      <label>Tel facturation
+        <input type="text" name="billing_contact_phone" value="{{ participant.billing_contact_phone or '' }}">
+      </label>
+    </fieldset>
+
+    <fieldset class="form-section">
+      <legend>Canaux à tester *</legend>
+      <div class="channels-row">
+        <label class="channel-checkbox"><input type="checkbox" name="channel_phone" {{ 'checked' if participant.channel_phone else '' }}> Téléphone</label>
+        <label class="channel-checkbox"><input type="checkbox" name="channel_mail" {{ 'checked' if participant.channel_mail else '' }}> Mail</label>
+        <label class="channel-checkbox"><input type="checkbox" name="channel_web" {{ 'checked' if participant.channel_web else '' }}> WEB</label>
+        <label class="channel-checkbox"><input type="checkbox" name="channel_rs" {{ 'checked' if participant.channel_rs else '' }}> RS</label>
+        <label class="channel-checkbox"><input type="checkbox" name="channel_chat" {{ 'checked' if participant.channel_chat else '' }}> Chat</label>
+      </div>
+    </fieldset>
+
+    <div class="actions">
+      <button type="submit" class="btn btn-primary">Enregistrer</button>
+      <a href="{{ url_for('participants.list_participants') }}" class="btn btn-secondary">Annuler</a>
+    </div>
+  </form>
+</div>
+
+<script src="{{ url_for('static', filename='js/participant_form.js') }}"></script>
+{% endblock %}

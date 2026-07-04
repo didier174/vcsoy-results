@@ -1,0 +1,11 @@
+{% extends "app_shell.html" %}
+{% block content %}
+<div class="centered-content">
+  <h1>Bienvenue dans VCSOY RESULTS</h1>
+  <p class="muted">
+    Connecté en tant que : {{ current_user.email }}<br>
+    Édition en cours : {{ edition.short_label }}
+  </p>
+  <p class="muted">Choisissez une action dans le menu à gauche pour commencer.</p>
+</div>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="edition-picker-screen">
+  <div class="edition-picker-card">
+    <h2>Sélectionner l'édition</h2>
+    <p class="muted">Tout le logiciel travaillera avec les données de l'édition choisie.</p>
+
+    <form method="post">
+      {% for e in editions %}
+        <label class="edition-option">
+          <input type="radio" name="edition_id" value="{{ e.id }}" {{ 'checked' if e.id == current_edition_id else '' }}>
+          {{ e.full_label }}
+        </label>
+      {% endfor %}
+
+      <div class="actions">
+        <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">Annuler</a>
+        <button type="submit" class="btn btn-primary">Valider</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends "app_shell.html" %}
+{% block content %}
+<div class="page-block">
+  <h1 class="page-title">Chargement d'un fichier de résultat</h1>
+  <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
+
+  <div class="upload-card">
+    <p class="muted">
+      Chargez le fichier Excel de résultats des tests mystères (onglets attendus :
+      Phone, Email, Web Navigation, Social Networks, Chat). Seul le format
+      <strong>.xlsx</strong> est accepté.
+    </p>
+    <p class="muted">
+      Le fichier est entièrement vérifié avant tout enregistrement : s'il contient
+      la moindre erreur, rien n'est chargé et la liste complète des erreurs
+      vous est présentée pour correction.
+    </p>
+
+    <form method="post" action="{{ url_for('results.upload_file') }}" enctype="multipart/form-data" class="upload-form">
+      <input type="file" name="result_file" accept=".xlsx" required>
+      <button type="submit" class="btn btn-primary">Charger un fichier</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

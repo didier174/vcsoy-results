@@ -1,0 +1,36 @@
+{% extends "app_shell.html" %}
+{% block content %}
+<div class="page-block">
+  <h1 class="page-title">Résultat du chargement</h1>
+  <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
+
+  {% if global_error %}
+    <div class="upload-card">
+      <p class="flash flash-error">{{ global_error }}</p>
+    </div>
+  {% elif success %}
+    <div class="upload-card upload-success">
+      <p class="flash flash-success">
+        Fichier « {{ filename }} » chargé avec succès : {{ total }} test(s) traité(s)
+        ({{ added }} ajouté(s), {{ updated }} mis à jour).
+      </p>
+    </div>
+  {% else %}
+    <div class="upload-card">
+      <p class="flash flash-error">
+        Le fichier « {{ filename }} » contient {{ errors|length }} erreur(s). Rien n'a été enregistré.
+        Corrigez le fichier puis rechargez-le.
+      </p>
+      <ul class="error-report-list">
+        {% for e in errors %}
+          <li>Onglet {{ e.sheet }} — Ligne {{ e.row }} erreur cellule {{ e.col_letter }} : {{ e.message }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <div class="actions">
+    <a href="{{ url_for('results.upload_page') }}" class="btn btn-primary">Fermer</a>
+  </div>
+</div>
+{% endblock %}

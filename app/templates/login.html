@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="login-screen">
+  <div class="login-card">
+    <div class="logos">
+      <img src="{{ url_for('static', filename='img/logo_2027_en.png') }}" alt="ESCDA 2027">
+      <img src="{{ url_for('static', filename='img/logo_2027_fr.png') }}" alt="ESCDA 2027">
+    </div>
+    <h1>VCSOY RESULTS</h1>
+    <p class="subtitle">Outil de traitement des résultats — ESCDA Canada</p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-list">
+          {% for category, message in messages %}
+            <p class="flash flash-{{ category }}">{{ message }}</p>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% if google_enabled %}
+      <a href="{{ url_for('auth.google_login') }}" class="btn btn-google">Se connecter avec Google</a>
+    {% endif %}
+
+    {% if dev_login_enabled %}
+      <div class="dev-login">
+        {% if google_enabled %}<p class="or-sep">ou (mode développement)</p>{% endif %}
+        <form method="post" class="dev-login-form">
+          <input type="email" name="email" placeholder="votre.email@exemple.com" required>
+          <button type="submit" class="btn btn-primary">Se connecter</button>
+        </form>
+      </div>
+    {% endif %}
+
+    {% if not google_enabled and not dev_login_enabled %}
+      <p class="flash flash-error">Aucun mode de connexion n'est configuré. Contactez l'administrateur.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

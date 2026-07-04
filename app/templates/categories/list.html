@@ -1,0 +1,65 @@
+{% extends "app_shell.html" %}
+{% block content %}
+<div class="page-block">
+  <h1 class="page-title">Liste des Catégories</h1>
+  <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
+
+  {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
+
+  <form method="post" class="table-form">
+    <div class="table-card">
+      <div class="table-row table-header">
+        <div class="col col-check"></div>
+        <div class="col col-cat-name">Category Name</div>
+        <div class="col col-cat-display">Nom de la Catégorie</div>
+        <div class="col col-cat-code">Code</div>
+      </div>
+
+      {% if not rows %}
+        <div class="table-empty">Aucune catégorie enregistrée pour cette édition.</div>
+      {% endif %}
+
+      {% for row in rows %}
+        <div class="table-row {{ 'editing' if row.editing else '' }}">
+          <div class="col col-check">
+            <input type="checkbox" name="selected_ids" value="{{ row.row_key }}" {{ 'disabled' if row.is_new }}>
+          </div>
+          <div class="col col-cat-name">
+            {% if row.editing %}
+              <input type="text" name="category_name_{{ row.row_key }}" value="{{ row.fields.category_name }}">
+            {% else %}
+              {{ row.fields.category_name }}
+            {% endif %}
+          </div>
+          <div class="col col-cat-display">
+            {% if row.editing %}
+              <input type="text" name="display_name_{{ row.row_key }}" value="{{ row.fields.display_name }}">
+            {% else %}
+              {{ row.fields.display_name }}
+            {% endif %}
+          </div>
+          <div class="col col-cat-code">
+            {% if row.editing %}
+              <input type="text" name="code_{{ row.row_key }}" value="{{ row.fields.code }}" maxlength="2" placeholder="00">
+            {% else %}
+              {{ row.fields.code }}
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="actions">
+      {% if any_editing %}
+        <button type="submit" formaction="{{ url_for('categories.save_rows') }}" class="btn btn-primary">Enregistrer</button>
+        <button type="submit" formaction="{{ url_for('categories.cancel_edit') }}" class="btn btn-secondary">Annuler</button>
+      {% else %}
+        <button type="submit" formaction="{{ url_for('categories.add_row') }}" class="btn btn-primary">Ajouter</button>
+        <button type="submit" formaction="{{ url_for('categories.edit_rows') }}" class="btn btn-secondary">Modifier</button>
+        <button type="submit" formaction="{{ url_for('categories.delete_rows') }}" class="btn btn-secondary"
+                onclick="return confirm('Supprimer les catégories sélectionnées ?');">Supprimer</button>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}
