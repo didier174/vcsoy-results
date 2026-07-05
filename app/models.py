@@ -110,6 +110,24 @@ class Participant(db.Model):
         return any(getattr(self, f) for f in self.CHANNEL_FIELDS)
 
 
+class AuthorizedUser(db.Model):
+    """
+    Liste des adresses e-mail autorisées à se connecter, gérable depuis
+    l'écran Administration. Vient en complément de la variable
+    d'environnement ALLOWED_EMAILS (qui continue de fonctionner telle
+    quelle) : un e-mail est autorisé s'il figure dans l'une OU l'autre des
+    deux listes. Cela évite tout risque de blocage accidentel de l'accès
+    lors de l'introduction de cette table.
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    added_at = db.Column(db.DateTime, default=datetime.utcnow)
+    added_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+
+    added_by = db.relationship("User")
+
+
 class TestResult(db.Model):
     """
     Une ligne de test (un test mystère), importée depuis un onglet du fichier

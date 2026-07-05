@@ -1,0 +1,73 @@
+{% extends "app_shell.html" %}
+{% block content %}
+<div class="page-block">
+  <h1 class="page-title">Administration — Utilisateurs autorisés</h1>
+  <p class="page-subtitle">Liste indépendante de l'édition en cours.</p>
+
+  {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
+
+  {% if env_emails %}
+    <div class="upload-card">
+      <p class="muted">
+        Ces adresses sont autorisées via la configuration serveur
+        (variable d'environnement) et ne peuvent pas être retirées ici :
+      </p>
+      <ul class="env-email-list">
+        {% for email in env_emails %}
+          <li>{{ email }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <form method="post" class="table-form">
+    <div class="table-card">
+      <div class="table-row table-header">
+        <div class="col col-check"></div>
+        <div class="col col-user-email">Adresse e-mail</div>
+        <div class="col col-user-added">Ajouté le</div>
+        <div class="col col-user-by">Ajouté par</div>
+      </div>
+
+      {% if not db_users %}
+        <div class="table-empty">Aucun utilisateur ajouté via cet écran pour le moment.</div>
+      {% endif %}
+
+      {% for u in db_users %}
+        <div class="table-row">
+          <div class="col col-check">
+            <input type="checkbox" name="selected_ids" value="{{ u.id }}">
+          </div>
+          <div class="col col-user-email">{{ u.email }}</div>
+          <div class="col col-user-added">{{ u.added_at.strftime('%d/%m/%Y') if u.added_at else '—' }}</div>
+          <div class="col col-user-by">{{ u.added_by.email if u.added_by else '—' }}</div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="actions">
+      <button type="button" class="btn btn-primary" onclick="document.getElementById('add-user-popup').showModal()">
+        Ajouter
+      </button>
+      <button type="submit" formaction="{{ url_for('admin.delete_users') }}" class="btn btn-secondary"
+              onclick="return confirm('Retirer l\'accès aux utilisateurs sélectionnés ?');">
+        Supprimer
+      </button>
+    </div>
+  </form>
+</div>
+
+<dialog id="add-user-popup" class="app-dialog">
+  <h3>Ajouter un utilisateur autorisé</h3>
+  <p class="muted">Saisissez une adresse e-mail compatible avec la connexion Google.</p>
+  <form method="post" action="{{ url_for('admin.add_user') }}">
+    <label class="dialog-input-label">Adresse e-mail
+      <input type="email" name="email" placeholder="collegue@exemple.com" required>
+    </label>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Annuler</button>
+      <button type="submit" class="btn btn-primary">Ajouter</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}

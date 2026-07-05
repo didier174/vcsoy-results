@@ -4,6 +4,12 @@
   <h1 class="page-title">Listes des tests</h1>
   <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
 
+  <div class="actions actions-top">
+    <button type="button" class="btn btn-primary" onclick="document.getElementById('search-popup').showModal()">
+      Rechercher un test
+    </button>
+  </div>
+
   {% if not groups %}
     <div class="upload-card">
       <p class="muted">Aucun test chargé pour cette édition. Utilisez « Chargement d'un fichier de résultat » pour en importer.</p>
@@ -39,12 +45,6 @@
       {% endfor %}
     </section>
   {% endfor %}
-
-  <div class="actions">
-    <button type="button" class="btn btn-primary" onclick="document.getElementById('search-popup').showModal()">
-      Rechercher un test
-    </button>
-  </div>
 </div>
 
 <!-- Popup : valeur + observation d'un Code N -->

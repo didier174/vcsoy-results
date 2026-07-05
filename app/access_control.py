@@ -25,14 +25,36 @@ def is_email_allowed(email):
     """
     Retourne True si l'adresse e-mail peut se connecter à l'outil.
 
-    Si ALLOWED_EMAILS n'est pas configurée (variable d'environnement vide),
-    aucune restriction n'est appliquée -- pratique en tout début de
-    configuration, mais à définir avant toute mise en production réelle.
+    Deux listes sont consultées, de façon additive (l'une OU l'autre) :
+    - ALLOWED_EMAILS (variable d'environnement, non modifiable depuis
+      l'interface) ;
+    - la table AuthorizedUser, gérable depuis l'écran Administration.
+
+    Si les deux sont vides, aucune restriction n'est appliquée -- pratique
+    en tout début de configuration, mais à définir avant toute mise en
+    production réelle.
     """
-    if not ALLOWED_EMAILS:
+    email_norm = (email or "").strip().lower()
+    if not email_norm:
+        return False
+
+    if email_norm in ALLOWED_EMAILS:
         return True
-    return (email or "").strip().lower() in ALLOWED_EMAILS
+
+    # Import différé pour éviter un import circulaire (models.py importe
+    # depuis extensions.py, pas depuis ce module).
+    from app.models import AuthorizedUser
+
+    if AuthorizedUser.query.filter_by(email=email_norm).first():
+        return True
+
+    db_has_entries = AuthorizedUser.query.first() is not None
+    if not ALLOWED_EMAILS and not db_has_entries:
+        return True  # aucune restriction configurée nulle part
+
+    return False
 
 
 def has_allowlist_configured():
-    return bool(ALLOWED_EMAILS)
+    from app.models import AuthorizedUser
+    return bool(ALLOWED_EMAILS) or AuthorizedUser.query.first() is not None

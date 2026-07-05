@@ -221,6 +221,12 @@ a { text-decoration: none; color: inherit; }
   margin-top: 20px;
 }
 
+.actions-top {
+  justify-content: flex-start;
+  margin-top: 0;
+  margin-bottom: 20px;
+}
+
 /* ---------- Pages de contenu (catégories / participants) ---------- */
 
 .page-block {
@@ -590,3 +596,33 @@ a { text-decoration: none; color: inherit; }
 .col-detail-code { flex: 0 0 90px; font-weight: 600; }
 .col-detail-value { flex: 0 0 120px; }
 .col-detail-obs { flex: 1 1 auto; }
+
+/* ---------- Administration ---------- */
+
+.env-email-list {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+.env-email-list li { padding: 3px 0; }
+
+.col-user-email { flex: 1 1 40%; }
+.col-user-added { flex: 0 0 110px; }
+.col-user-by { flex: 1 1 25%; color: var(--muted); }
+
+.dialog-input-label {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.dialog-input-label input {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 13px;
+}

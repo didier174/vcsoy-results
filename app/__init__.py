@@ -34,12 +34,14 @@ def create_app(config_class=Config):
     from app.categories.routes import categories_bp
     from app.participants.routes import participants_bp
     from app.results.routes import results_bp
+    from app.admin.routes import admin_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(categories_bp)
     app.register_blueprint(participants_bp)
     app.register_blueprint(results_bp)
+    app.register_blueprint(admin_bp)
 
     @login_manager.user_loader
     def load_user(user_id):
