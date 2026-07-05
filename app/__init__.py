@@ -35,6 +35,7 @@ def create_app(config_class=Config):
     from app.participants.routes import participants_bp
     from app.results.routes import results_bp
     from app.admin.routes import admin_bp
+    from app.invoicing.routes import invoicing_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
@@ -42,6 +43,7 @@ def create_app(config_class=Config):
     app.register_blueprint(participants_bp)
     app.register_blueprint(results_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(invoicing_bp)
 
     @login_manager.user_loader
     def load_user(user_id):

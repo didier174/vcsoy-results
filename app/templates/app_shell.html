@@ -27,6 +27,8 @@
           <a href="{{ url_for('results.list_tests') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
         {% elif item == "Administration" %}
           <a href="{{ url_for('admin.list_users') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
+        {% elif item == "Facturation" %}
+          <a href="{{ url_for('invoicing.list_invoices') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
         {% else %}
           <a href="{{ url_for('main.module', item_name=item) }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
         {% endif %}

@@ -128,6 +128,50 @@ class AuthorizedUser(db.Model):
     added_by = db.relationship("User")
 
 
+class Invoice(db.Model):
+    """
+    Une facture générée pour un participant, rattachée à l'édition en
+    cours. Les informations du participant sont dupliquées ici au moment
+    de la génération (nom, adresse de facturation...) afin que la facture
+    reste inchangée même si les données du participant sont modifiées par
+    la suite.
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    edition_id = db.Column(db.String(20), nullable=False, index=True)
+    participant_id = db.Column(db.Integer, db.ForeignKey("participant.id"), nullable=True)
+
+    language = db.Column(db.String(2), default="fr")  # "fr" ou "en"
+    invoice_number = db.Column(db.String(50))
+    customer_number = db.Column(db.String(50))
+    invoice_date = db.Column(db.Date)
+
+    # Instantané des informations de facturation du participant au moment
+    # de la génération.
+    bill_to_contact_name = db.Column(db.String(255), default="")
+    bill_to_company_name = db.Column(db.String(255), default="")
+    bill_to_address1 = db.Column(db.String(255), default="")
+    bill_to_address2 = db.Column(db.String(255), default="")
+    bill_to_city = db.Column(db.String(120), default="")
+    bill_to_postal_code = db.Column(db.String(20), default="")
+    bill_to_country = db.Column(db.String(20), default="")
+
+    # [{"description": ..., "is_heading": bool, "quantity": 1, "unit_price": 0, "total": 0}, ...]
+    line_items = db.Column(db.JSON)
+
+    subtotal = db.Column(db.Float, default=0)
+    gst_amount = db.Column(db.Float, default=0)
+    qst_amount = db.Column(db.Float, default=0)
+    total_amount = db.Column(db.Float, default=0)
+    is_export = db.Column(db.Boolean, default=False)
+
+    created_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    participant = db.relationship("Participant")
+    created_by = db.relationship("User")
+
+
 class TestResult(db.Model):
     """
     Une ligne de test (un test mystère), importée depuis un onglet du fichier

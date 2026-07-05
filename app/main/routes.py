@@ -50,6 +50,8 @@ def module(item_name):
         return redirect(url_for("results.list_tests"))
     if item_name == "Administration":
         return redirect(url_for("admin.list_users"))
+    if item_name == "Facturation":
+        return redirect(url_for("invoicing.list_invoices"))
 
     if item_name not in MENU_ITEMS:
         return redirect(url_for("main.dashboard"))

@@ -1,0 +1,67 @@
+{% extends "app_shell.html" %}
+{% block content %}
+<div class="page-block test-detail-page">
+  <h1 class="page-title">Facture {{ invoice.invoice_number }}</h1>
+  <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
+
+  <div class="upload-card upload-success">
+    <p class="flash flash-success">Facture générée avec succès.</p>
+  </div>
+
+  <div class="detail-header-card">
+    <div class="detail-header-item">
+      <span class="detail-header-label">Participant</span>
+      <span class="detail-header-value">{{ invoice.bill_to_company_name }}</span>
+    </div>
+    <div class="detail-header-item">
+      <span class="detail-header-label">Langue</span>
+      <span class="detail-header-value">{{ 'Français' if invoice.language == 'fr' else 'English' }}</span>
+    </div>
+    <div class="detail-header-item">
+      <span class="detail-header-label">Date</span>
+      <span class="detail-header-value">{{ invoice.invoice_date.strftime('%d/%m/%Y') if invoice.invoice_date else '—' }}</span>
+    </div>
+    <div class="detail-header-item">
+      <span class="detail-header-label">Total CAD</span>
+      <span class="detail-header-value">{{ "%.2f"|format(invoice.total_amount or 0) }} $</span>
+    </div>
+  </div>
+
+  <h2 class="detail-section-title">Lignes de facture</h2>
+  <div class="table-card">
+    <div class="table-row table-header">
+      <div class="col col-invoice-desc">Description</div>
+      <div class="col col-invoice-amount">Prix unitaire</div>
+      <div class="col col-invoice-amount">Total</div>
+    </div>
+    {% for item in invoice.line_items %}
+      <div class="table-row">
+        <div class="col col-invoice-desc {{ 'invoice-heading' if item.is_heading else '' }}">{{ item.description }}</div>
+        <div class="col col-invoice-amount">{{ "%.2f"|format(item.unit_price) ~ " $" if not item.is_heading else "" }}</div>
+        <div class="col col-invoice-amount">{{ "%.2f"|format(item.total) ~ " $" if not item.is_heading else "" }}</div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="other-data-grid other-data-grid-page invoice-totals-grid">
+    <span class="other-data-key">Sous-total</span>
+    <span class="other-data-value">{{ "%.2f"|format(invoice.subtotal or 0) }} $</span>
+    <span class="other-data-key">TPS</span>
+    <span class="other-data-value">{{ "%.2f"|format(invoice.gst_amount or 0) }} $</span>
+    <span class="other-data-key">TVQ</span>
+    <span class="other-data-value">{{ "%.2f"|format(invoice.qst_amount or 0) }} $</span>
+    <span class="other-data-key">Total CAD</span>
+    <span class="other-data-value"><strong>{{ "%.2f"|format(invoice.total_amount or 0) }} $</strong></span>
+  </div>
+
+  {% if invoice.is_export %}
+    <p class="muted">Exportation de services hors Canada : taxes à 0% (fourniture détaxée).</p>
+  {% endif %}
+
+  <div class="actions">
+    <a href="{{ url_for('invoicing.download_xlsx', invoice_id=invoice.id) }}" class="btn btn-primary">Télécharger en Excel</a>
+    <a href="{{ url_for('invoicing.download_pdf', invoice_id=invoice.id) }}" class="btn btn-primary">Télécharger en PDF</a>
+    <a href="{{ url_for('invoicing.list_invoices') }}" class="btn btn-secondary">Retour aux factures</a>
+  </div>
+</div>
+{% endblock %}

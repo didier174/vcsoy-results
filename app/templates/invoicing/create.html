@@ -1,0 +1,95 @@
+{% extends "app_shell.html" %}
+{% block content %}
+<div class="page-block form-page">
+  <h1 class="page-title">Créer une facture</h1>
+  <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
+
+  {% if errors %}
+    <ul class="flash flash-error error-list">
+      {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+  {% endif %}
+
+  <form method="post" class="participant-form">
+    <fieldset class="form-section">
+      <legend>Informations générales</legend>
+
+      <label>Langue de la facture *
+        <select name="language" required>
+          <option value="">— Sélectionner —</option>
+          <option value="fr" {{ 'selected' if form_values.get('language') == 'fr' else '' }}>Français</option>
+          <option value="en" {{ 'selected' if form_values.get('language') == 'en' else '' }}>English</option>
+        </select>
+      </label>
+
+      <label>Numéro de facture *
+        <input type="text" name="invoice_number" value="{{ form_values.get('invoice_number', '') }}" required>
+      </label>
+
+      <label>Numéro de client *
+        <input type="text" name="customer_number" value="{{ form_values.get('customer_number', '') }}" required>
+      </label>
+
+      <label>Date de facture *
+        <input type="date" name="invoice_date" value="{{ form_values.get('invoice_date', '') }}" required>
+      </label>
+
+      <label>Participant *
+        {% if participants %}
+          <select name="participant_id" required>
+            <option value="">— Sélectionner —</option>
+            {% for p in participants %}
+              <option value="{{ p.id }}" {{ 'selected' if form_values.get('participant_id')|string == p.id|string else '' }}>
+                {{ p.participant_name }} ({{ p.category_label() }})
+              </option>
+            {% endfor %}
+          </select>
+        {% else %}
+          <p class="flash flash-error">Aucun participant configuré pour cette édition — créez-en un dans « Configuration Participant ».</p>
+        {% endif %}
+      </label>
+    </fieldset>
+
+    <fieldset class="form-section">
+      <legend>Produits à facturer *</legend>
+      <p class="muted">Cochez les produits concernés, puis indiquez leur montant hors taxes.</p>
+
+      <div class="product-group">
+        <p class="product-group-title">Voted Customer Service Of the Year (VCSOY)</p>
+        {% for p in vcsoy_products %}
+          <div class="product-row">
+            <label class="product-checkbox-label">
+              <input type="checkbox" class="product-checkbox" name="product_{{ p.id }}" data-product-id="{{ p.id }}"
+                     {{ 'checked' if form_values.get('product_' ~ p.id) else '' }}>
+              {{ p.label_fr }} <span class="product-label-en">({{ p.label_en }})</span>
+            </label>
+            <input type="text" id="price_{{ p.id }}" name="price_{{ p.id }}" placeholder="Montant avant taxes ($)"
+                   value="{{ form_values.get('price_' ~ p.id, '') }}" class="product-price-input">
+          </div>
+        {% endfor %}
+      </div>
+
+      <div class="product-group">
+        {% for p in standalone_products %}
+          <div class="product-row">
+            <label class="product-checkbox-label">
+              <input type="checkbox" class="product-checkbox" name="product_{{ p.id }}" data-product-id="{{ p.id }}"
+                     {{ 'checked' if form_values.get('product_' ~ p.id) else '' }}>
+              {{ p.label_fr }} <span class="product-label-en">({{ p.label_en }})</span>
+            </label>
+            <input type="text" id="price_{{ p.id }}" name="price_{{ p.id }}" placeholder="Montant avant taxes ($)"
+                   value="{{ form_values.get('price_' ~ p.id, '') }}" class="product-price-input">
+          </div>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <div class="actions">
+      <button type="submit" class="btn btn-primary">Générer la facture</button>
+      <a href="{{ url_for('invoicing.list_invoices') }}" class="btn btn-secondary">Annuler</a>
+    </div>
+  </form>
+</div>
+
+<script src="{{ url_for('static', filename='js/invoice_form.js') }}"></script>
+{% endblock %}

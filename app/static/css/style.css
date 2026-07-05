@@ -538,6 +538,24 @@ a { text-decoration: none; color: inherit; }
 .other-data-key { color: var(--muted); font-weight: 600; }
 .other-data-value { word-break: break-word; }
 
+/* La popup JS (tests_list.js) enveloppe chaque paire dans .other-data-row,
+   ce qui casse la grille 2 colonnes utilisée par la page de détail (où les
+   spans clé/valeur sont des enfants directs de .other-data-grid). On donne
+   donc à .other-data-row son propre agencement, avec un espacement net
+   entre le nom du champ et sa valeur. */
+.other-data-row {
+  display: flex;
+  gap: 14px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+.other-data-row .other-data-key {
+  flex: 0 0 220px;
+}
+.other-data-row .other-data-value {
+  flex: 1;
+}
+
 .other-data-grid-page {
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -625,4 +643,64 @@ a { text-decoration: none; color: inherit; }
   border: 1px solid var(--border);
   border-radius: 5px;
   font-size: 13px;
+}
+
+/* ---------- Facturation ---------- */
+
+.product-group {
+  margin-bottom: 18px;
+}
+
+.product-group-title {
+  font-size: 12px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.product-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.product-row:last-child { border-bottom: none; }
+
+.product-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  margin: 0;
+  flex: 1;
+}
+.product-checkbox-label input { width: auto; margin: 0; }
+
+.product-label-en {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.product-price-input {
+  width: 180px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 13px;
+}
+.product-price-input:disabled {
+  background: #F0F0F0;
+  color: var(--muted);
+}
+
+.col-invoice-desc { flex: 1 1 auto; }
+.col-invoice-amount { flex: 0 0 130px; text-align: right; }
+.invoice-heading { font-weight: 700; }
+
+.invoice-totals-grid {
+  max-width: 320px;
+  margin-left: auto;
+  grid-template-columns: 1fr auto;
 }

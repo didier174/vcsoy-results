@@ -1,0 +1,33 @@
+{% extends "app_shell.html" %}
+{% block content %}
+<div class="page-block">
+  <div class="page-header-row">
+    <h1 class="page-title">Facturation</h1>
+    <a href="{{ url_for('invoicing.create_form') }}" class="btn btn-primary btn-add-link">Créer une facture</a>
+  </div>
+  <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
+
+  {% if not invoices %}
+    <div class="upload-card">
+      <p class="muted">Aucune facture générée pour cette édition.</p>
+    </div>
+  {% else %}
+    <div class="table-card">
+      <div class="table-row table-header">
+        <div class="col col-search-id">No facture</div>
+        <div class="col col-search-cat">Participant</div>
+        <div class="col col-search-date">Date</div>
+        <div class="col col-search-chan">Total CAD</div>
+      </div>
+      {% for inv in invoices %}
+        <a class="table-row search-result-row" href="{{ url_for('invoicing.preview_invoice', invoice_id=inv.id) }}">
+          <div class="col col-search-id">{{ inv.invoice_number }}</div>
+          <div class="col col-search-cat">{{ inv.bill_to_company_name }}</div>
+          <div class="col col-search-date">{{ inv.invoice_date.strftime('%d/%m/%Y') if inv.invoice_date else '—' }}</div>
+          <div class="col col-search-chan">{{ "%.2f"|format(inv.total_amount or 0) }} $</div>
+        </a>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
