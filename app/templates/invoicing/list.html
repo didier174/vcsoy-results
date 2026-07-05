@@ -1,33 +1,152 @@
 {% extends "app_shell.html" %}
 {% block content %}
 <div class="page-block">
-  <div class="page-header-row">
-    <h1 class="page-title">Facturation</h1>
-    <a href="{{ url_for('invoicing.create_form') }}" class="btn btn-primary btn-add-link">Créer une facture</a>
-  </div>
+  <h1 class="page-title">Facturation</h1>
   <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
+
+  {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
 
   {% if not invoices %}
     <div class="upload-card">
       <p class="muted">Aucune facture générée pour cette édition.</p>
     </div>
   {% else %}
-    <div class="table-card">
-      <div class="table-row table-header">
-        <div class="col col-search-id">No facture</div>
-        <div class="col col-search-cat">Participant</div>
-        <div class="col col-search-date">Date</div>
-        <div class="col col-search-chan">Total CAD</div>
+    <form method="post" class="table-form">
+      <div class="table-card">
+        <div class="table-row table-header">
+          <div class="col col-check"></div>
+          <div class="col col-search-id">No facture</div>
+          <div class="col col-search-cat">Participant</div>
+          <div class="col col-search-date">Date</div>
+          <div class="col col-search-chan">Total CAD</div>
+        </div>
+        {% for inv in invoices %}
+          <script type="application/json" id="invoice-data-{{ inv.id }}">{{ edit_payloads[inv.id]|tojson }}</script>
+          <div class="table-row">
+            <div class="col col-check">
+              <input type="checkbox" class="invoice-select-checkbox" name="selected_ids" value="{{ inv.id }}">
+            </div>
+            <div class="col col-search-id">
+              <a href="{{ url_for('invoicing.preview_invoice', invoice_id=inv.id) }}">{{ inv.invoice_number }}</a>
+            </div>
+            <div class="col col-search-cat">{{ inv.bill_to_company_name }}</div>
+            <div class="col col-search-date">{{ inv.invoice_date.strftime('%d/%m/%Y') if inv.invoice_date else '—' }}</div>
+            <div class="col col-search-chan">{{ "%.2f"|format(inv.total_amount or 0) }} $</div>
+          </div>
+        {% endfor %}
       </div>
-      {% for inv in invoices %}
-        <a class="table-row search-result-row" href="{{ url_for('invoicing.preview_invoice', invoice_id=inv.id) }}">
-          <div class="col col-search-id">{{ inv.invoice_number }}</div>
-          <div class="col col-search-cat">{{ inv.bill_to_company_name }}</div>
-          <div class="col col-search-date">{{ inv.invoice_date.strftime('%d/%m/%Y') if inv.invoice_date else '—' }}</div>
-          <div class="col col-search-chan">{{ "%.2f"|format(inv.total_amount or 0) }} $</div>
-        </a>
-      {% endfor %}
+
+      <div class="actions">
+        <a href="{{ url_for('invoicing.create_form') }}" class="btn btn-primary btn-add-link">Créer</a>
+        <button type="button" class="btn btn-secondary" onclick="triggerEditInvoice()">Modifier</button>
+        <button type="submit" formaction="{{ url_for('invoicing.delete_invoices') }}" class="btn btn-secondary"
+                onclick="return confirm('Supprimer les factures sélectionnées ?');">Supprimer</button>
+      </div>
+    </form>
+  {% endif %}
+
+  {% if not invoices %}
+    <div class="actions">
+      <a href="{{ url_for('invoicing.create_form') }}" class="btn btn-primary btn-add-link">Créer</a>
     </div>
   {% endif %}
 </div>
+
+<!-- Popup de modification d'une facture -->
+<dialog id="edit-invoice-popup" class="app-dialog edit-invoice-dialog">
+  <h3>Modifier la facture</h3>
+  <p class="muted">Vérifiez et corrigez les informations ci-dessous si besoin.</p>
+
+  <form method="post" id="edit-invoice-form" class="participant-form edit-invoice-form">
+    <fieldset class="form-section">
+      <legend>Informations générales</legend>
+
+      <label>Langue de la facture *
+        <select name="language" id="edit_language" required>
+          <option value="fr">Français</option>
+          <option value="en">English</option>
+        </select>
+      </label>
+
+      <label>Numéro de facture *
+        <input type="text" name="invoice_number" id="edit_invoice_number" required>
+      </label>
+
+      <label>Numéro de client *
+        <input type="text" name="customer_number" id="edit_customer_number" required>
+      </label>
+
+      <label>Date de facture *
+        <input type="date" name="invoice_date" id="edit_invoice_date" required>
+      </label>
+
+      <label>Nom du client (sur la facture) *
+        <input type="text" name="customer_name" id="edit_customer_name" required>
+      </label>
+    </fieldset>
+
+    <fieldset class="form-section">
+      <legend>Adresse de facturation</legend>
+      <label>Nom du contact
+        <input type="text" name="bill_to_contact_name" id="edit_bill_to_contact_name">
+      </label>
+      <label>Adresse 1
+        <input type="text" name="bill_to_address1" id="edit_bill_to_address1">
+      </label>
+      <label>Adresse 2
+        <input type="text" name="bill_to_address2" id="edit_bill_to_address2">
+      </label>
+      <label>Ville
+        <input type="text" name="bill_to_city" id="edit_bill_to_city">
+      </label>
+      <label>Code postal
+        <input type="text" name="bill_to_postal_code" id="edit_bill_to_postal_code">
+      </label>
+      <label>Pays
+        <select name="bill_to_country" id="edit_bill_to_country">
+          <option value="Canada">Canada</option>
+          <option value="USA">USA</option>
+        </select>
+      </label>
+    </fieldset>
+
+    <fieldset class="form-section">
+      <legend>Produits à facturer *</legend>
+
+      <div class="product-group">
+        <p class="product-group-title">Voted Customer Service Of the Year (VCSOY)</p>
+        {% for p in vcsoy_products %}
+          <div class="product-row">
+            <label class="product-checkbox-label">
+              <input type="checkbox" class="edit-product-checkbox" name="product_{{ p.id }}" data-product-id="{{ p.id }}">
+              {{ p.label_fr }} <span class="product-label-en">({{ p.label_en }})</span>
+            </label>
+            <input type="text" id="edit_price_{{ p.id }}" name="price_{{ p.id }}" placeholder="Montant avant taxes ($)"
+                   class="product-price-input" disabled>
+          </div>
+        {% endfor %}
+      </div>
+
+      <div class="product-group">
+        {% for p in standalone_products %}
+          <div class="product-row">
+            <label class="product-checkbox-label">
+              <input type="checkbox" class="edit-product-checkbox" name="product_{{ p.id }}" data-product-id="{{ p.id }}">
+              {{ p.label_fr }} <span class="product-label-en">({{ p.label_en }})</span>
+            </label>
+            <input type="text" id="edit_price_{{ p.id }}" name="price_{{ p.id }}" placeholder="Montant avant taxes ($)"
+                   class="product-price-input" disabled>
+          </div>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('edit-invoice-popup').close()">Annuler</button>
+      <button type="submit" class="btn btn-primary">Enregistrer</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="{{ url_for('static', filename='js/invoice_list.js') }}"></script>
 {% endblock %}

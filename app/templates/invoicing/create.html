@@ -10,7 +10,11 @@
     </ul>
   {% endif %}
 
-  <form method="post" class="participant-form">
+  <script type="application/json" id="participants-data">
+    {{ participants_json|tojson }}
+  </script>
+
+  <form method="post" class="participant-form" id="invoice-create-form">
     <fieldset class="form-section">
       <legend>Informations générales</legend>
 
@@ -36,7 +40,7 @@
 
       <label>Participant *
         {% if participants %}
-          <select name="participant_id" required>
+          <select name="participant_id" id="participant_id" required>
             <option value="">— Sélectionner —</option>
             {% for p in participants %}
               <option value="{{ p.id }}" {{ 'selected' if form_values.get('participant_id')|string == p.id|string else '' }}>
@@ -48,6 +52,20 @@
           <p class="flash flash-error">Aucun participant configuré pour cette édition — créez-en un dans « Configuration Participant ».</p>
         {% endif %}
       </label>
+
+      <label>Nom du client (sur la facture) *
+        <input type="text" name="customer_name" id="customer_name"
+               value="{{ form_values.get('customer_name', '') }}"
+               placeholder="Pré-rempli avec le nom du participant, modifiable" required>
+      </label>
+
+      <!-- Adresse de facturation : reprise automatiquement du participant sélectionné -->
+      <input type="hidden" name="bill_to_address1" id="bill_to_address1" value="{{ form_values.get('bill_to_address1', '') }}">
+      <input type="hidden" name="bill_to_address2" id="bill_to_address2" value="{{ form_values.get('bill_to_address2', '') }}">
+      <input type="hidden" name="bill_to_city" id="bill_to_city" value="{{ form_values.get('bill_to_city', '') }}">
+      <input type="hidden" name="bill_to_postal_code" id="bill_to_postal_code" value="{{ form_values.get('bill_to_postal_code', '') }}">
+      <input type="hidden" name="bill_to_country" id="bill_to_country" value="{{ form_values.get('bill_to_country', 'Canada') }}">
+      <input type="hidden" name="bill_to_contact_name" id="bill_to_contact_name" value="{{ form_values.get('bill_to_contact_name', '') }}">
     </fieldset>
 
     <fieldset class="form-section">

@@ -415,6 +415,39 @@ a { text-decoration: none; color: inherit; }
 }
 .error-report-list li:last-child { border-bottom: none; }
 
+.uploaded-files-box {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-height: 210px; /* ~5 lignes visibles, le reste accessible par défilement */
+  overflow-y: auto;
+  margin-bottom: 20px;
+}
+
+.uploaded-file-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.uploaded-file-row:last-child { border-bottom: none; }
+
+.uploaded-file-name {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.uploaded-file-meta {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 /* ---------- Listes des tests ---------- */
 
 .participant-group {
@@ -582,7 +615,7 @@ a { text-decoration: none; color: inherit; }
 
 .detail-header-card {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 16px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -703,4 +736,14 @@ a { text-decoration: none; color: inherit; }
   max-width: 320px;
   margin-left: auto;
   grid-template-columns: 1fr auto;
+}
+
+.edit-invoice-dialog {
+  max-width: 640px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.edit-invoice-form .form-section {
+  text-align: left;
 }

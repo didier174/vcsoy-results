@@ -47,11 +47,11 @@ ALL_PRODUCTS = VCSOY_PRODUCTS + STANDALONE_PRODUCTS
 PRODUCTS_BY_ID = {p["id"]: p for p in ALL_PRODUCTS}
 
 
-def vcsoy_heading(language, edition_short_label):
-    """Intitulé de regroupement des produits VCSOY, ex. 'ESCDA 2027'."""
+def vcsoy_heading(language, edition_id):
+    """Intitulé de regroupement des produits VCSOY, ex. 'VCSOY Edition 2027'."""
     if language == "fr":
-        return f"Élu Service à la Clientèle de l'Année (VCSOY) — {edition_short_label}"
-    return f"Voted Customer Service Of the Year (VCSOY) — {edition_short_label}"
+        return f"Élu Service à la Clientèle de l'Année (VCSOY) Édition {edition_id}"
+    return f"Voted Customer Service Of the Year (VCSOY) Edition {edition_id}"
 
 
 def product_label(product_id, language):

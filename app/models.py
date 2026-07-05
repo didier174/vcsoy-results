@@ -128,6 +128,21 @@ class AuthorizedUser(db.Model):
     added_by = db.relationship("User")
 
 
+class FileUpload(db.Model):
+    """Historique des fichiers de résultats chargés avec succès, par édition."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    edition_id = db.Column(db.String(20), nullable=False, index=True)
+    filename = db.Column(db.String(255))
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    uploaded_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    added_count = db.Column(db.Integer, default=0)
+    updated_count = db.Column(db.Integer, default=0)
+    total_count = db.Column(db.Integer, default=0)
+
+    uploaded_by = db.relationship("User")
+
+
 class Invoice(db.Model):
     """
     Une facture générée pour un participant, rattachée à l'édition en

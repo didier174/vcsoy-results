@@ -14,18 +14,65 @@ import os
 
 import openpyxl
 from openpyxl.styles import Font
+from openpyxl.drawing.image import Image as XLImage
+from PIL import Image as PILImage
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import mm
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_RIGHT
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage
 
 TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "invoice_template.xlsx")
+IMG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "img")
 
 FIRST_ITEM_ROW = 27
 MAX_ITEM_ROW = 35
+
+# Taille cible du logo dans le classeur Excel (en pixels) et dans le PDF
+# (en points) — la largeur est recalculée pour chaque logo afin de
+# préserver son ratio d'origine et éviter toute déformation.
+XLSX_LOGO_HEIGHT_PX = 95
+PDF_LOGO_HEIGHT_PT = 62
+
+# Logo (français/anglais) à utiliser par édition. Le logo anglais 2028
+# n'a pas encore été fourni : on utilise en attendant le logo français de
+# la même édition, pour ne jamais afficher un logo d'une mauvaise édition.
+LOGO_FILES = {
+    ("2027", "fr"): "logo_2027_fr.png",
+    ("2027", "en"): "logo_2027_en.png",
+    ("2028", "fr"): "logo_2028_fr.png",
+    ("2028", "en"): "logo_2028_en.png",  # à fournir ; repli automatique sinon
+}
+
+
+def resolve_logo_path(edition_id, language):
+    """Retourne le chemin du logo à utiliser sur la facture, avec repli sûr."""
+    filename = LOGO_FILES.get((edition_id, language))
+    if filename:
+        path = os.path.join(IMG_DIR, filename)
+        if os.path.exists(path):
+            return path
+
+    # Repli 1 : logo français de la même édition (toujours fourni pour l'instant)
+    fallback_filename = LOGO_FILES.get((edition_id, "fr"))
+    if fallback_filename:
+        path = os.path.join(IMG_DIR, fallback_filename)
+        if os.path.exists(path):
+            return path
+
+    # Repli 2 : logo français 2027 (garantit qu'il y a toujours un logo affiché)
+    path = os.path.join(IMG_DIR, "logo_2027_fr.png")
+    return path if os.path.exists(path) else None
+
+
+def _logo_pixel_size(logo_path, target_height):
+    with PILImage.open(logo_path) as pil_img:
+        ratio = pil_img.width / pil_img.height
+    height = target_height
+    width = int(height * ratio)
+    return width, height
 
 LABELS = {
     "fr": {
@@ -84,6 +131,18 @@ def fill_invoice_xlsx(invoice):
     wb = openpyxl.load_workbook(TEMPLATE_PATH)
     ws = wb["Feuil1"]
     labels = _labels_for(invoice.language)
+
+    # Logo de l'édition en cours, dans la langue de la facture. On ne
+    # touche à aucune fusion de cellule ni à aucune autre mise en forme du
+    # modèle : seule l'image est remplacée, à la même position (B1).
+    logo_path = resolve_logo_path(invoice.edition_id, invoice.language)
+    ws._images = []
+    if logo_path:
+        width, height = _logo_pixel_size(logo_path, XLSX_LOGO_HEIGHT_PX)
+        xl_img = XLImage(logo_path)
+        xl_img.width = width
+        xl_img.height = height
+        ws.add_image(xl_img, "B1")
 
     ws["AH1"] = labels["invoice_title"]
     ws["W5"] = labels["invoice_no"]
@@ -155,14 +214,20 @@ def render_invoice_pdf(invoice):
 
     elements = []
 
-    header_data = [[
-        Paragraph(
-            "<b>CA2D Inc.</b><br/>1203 Avenue Bernard<br/>MONTREAL, QC, H2V 1V7<br/>CANADA<br/>"
-            "Phone: +1 514 690 3652<br/>TPS: 811652985RT001<br/>TVQ: 1222850718",
-            normal,
-        ),
-        Paragraph(labels["invoice_title"], title_style),
-    ]]
+    logo_path = resolve_logo_path(invoice.edition_id, invoice.language)
+    company_para = Paragraph(
+        "<b>CA2D Inc.</b><br/>1203 Avenue Bernard<br/>MONTREAL, QC, H2V 1V7<br/>CANADA<br/>"
+        "Phone: +1 514 690 3652<br/>TPS: 811652985RT001<br/>TVQ: 1222850718",
+        normal,
+    )
+    if logo_path:
+        width, height = _logo_pixel_size(logo_path, PDF_LOGO_HEIGHT_PT)
+        logo_flowable = RLImage(logo_path, width=width, height=height)
+        left_column = [logo_flowable, Spacer(1, 8), company_para]
+    else:
+        left_column = [company_para]
+
+    header_data = [[left_column, Paragraph(labels["invoice_title"], title_style)]]
     header_table = Table(header_data, colWidths=[300, 195])
     header_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
     elements.append(header_table)
