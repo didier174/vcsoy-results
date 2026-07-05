@@ -9,7 +9,7 @@ MENU_ITEMS = [
     "Configuration Participant",
     "Chargement d'un fichier de résultat",
     "Compilation des résultats",
-    "Présentation de la liste de test",
+    "Listes des tests",
     "Présentation des résultats",
     "Liste des lauréats",
     "Facturation",

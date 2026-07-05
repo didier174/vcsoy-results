@@ -274,6 +274,37 @@ Elles sont créées **automatiquement** au démarrage de l'application
 nécessaire de votre côté, ni en local ni sur Render. Les données déjà
 présentes (utilisateurs, historique) ne sont pas touchées.
 
+## Étape 5 (web) — Listes des tests
+
+Item de menu renommé de « Présentation de la liste de test » en **« Listes
+des tests »**.
+
+Les tests sont présentés **groupés par participant** (avec rappel de la
+catégorie), puis par canal. **Important** : la signification d'un « Code
+N » dépend du canal (Code 3 en téléphone ≠ Code 3 en chat) — chaque test
+affiche donc uniquement ses propres codes, sans jamais mélanger des
+colonnes de canaux différents dans un même tableau.
+
+Pour chaque test : date, canal, et la liste des « Code N » sous forme de
+petites puces cliquables — un clic ouvre une popup avec la valeur du code
+et son observation associée (colonne « Code N obs », retrouvée même quand
+son nom exact varie légèrement, ex. « Code3 obs » vs « Code 9 obs »). Un
+bouton « Autres données » ouvre une popup listant tous les autres champs
+de la ligne (Id Mystery Tester, QS, Status, etc.).
+
+Un bouton **« Rechercher un test »** ouvre une popup de recherche (numéro
+de test, canal et/ou date — au moins un critère) ; le ou les tests
+correspondants sont ensuite présentés avec toutes leurs informations dans
+une page de détail claire et complète (mêmes données que les popups, mais
+organisées pour une lecture d'ensemble).
+
+Techniquement : popups réalisées avec l'élément natif `<dialog>` du
+navigateur (aucune bibliothèque JS externe), et les données nécessaires
+aux popups de la liste sont embarquées directement dans la page au
+chargement (pas d'aller-retour réseau supplémentaire au clic).
+
+
+
 ## Structure du projet
 
 ```
@@ -296,12 +327,13 @@ vcsoy_web/
 │   ├── categories/routes.py      # Configuration catégorie
 │   ├── participants/routes.py    # Configuration Participant
 │   ├── results/
-│   │   ├── routes.py              # Chargement d'un fichier de résultat
-│   │   └── validation.py          # Règles de contrôle du fichier Excel
+│   │   ├── routes.py              # Chargement de fichier + Listes des tests + recherche
+│   │   ├── validation.py          # Règles de contrôle du fichier Excel
+│   │   └── presentation.py        # Extraction Code N / observation / autres données
 │   ├── templates/                # gabarits HTML (Jinja2)
 │   └── static/
 │       ├── css/style.css
-│       ├── js/                   # petits scripts (bascule Act Ref., adresse facturation)
+│       ├── js/                   # petits scripts (popups, bascule Act Ref., adresse facturation)
 │       └── img/                  # logos des éditions
 ```
 
@@ -331,6 +363,8 @@ de tester avec les **vraies** bibliothèques en conditions réelles.
 
 Compilation des résultats (calcul du score par participant à partir des
 données maintenant en base), détermination des gagnants par catégorie,
-présentation de la liste de test, présentation des résultats, liste des
-lauréats, facturation, administration — au fur et à mesure de vos
-indications.
+présentation des résultats, liste des lauréats, facturation, administration
+— au fur et à mesure de vos indications.
+
+Aucune migration de base de données n'est nécessaire pour cette étape
+(aucune nouvelle table, aucune nouvelle colonne sur une table existante).

@@ -23,10 +23,12 @@ from app.models import Category, Participant, TestResult, ActionLog
 from app.editions import get_current_edition_id, get_edition
 from app.menu import MENU_ITEMS
 from app.results.validation import validate_workbook, EXPECTED_SHEETS
+from app.results.presentation import build_test_view, CHANNEL_LABELS, CHANNEL_ORDER
 
 results_bp = Blueprint("results", __name__, url_prefix="/results")
 
 ACTIVE_ITEM = "Chargement d'un fichier de résultat"
+ACTIVE_ITEM_TESTS = "Listes des tests"
 
 
 def _log(action, details=""):
@@ -127,3 +129,102 @@ def upload_file():
     )
 
     return _render_report(success=True, filename=filename, added=added, updated=updated, total=len(valid_rows))
+
+
+# ----------------------------------------------------- Listes des tests
+
+def _sort_key(test_result):
+    category_label = test_result.category.label() if test_result.category else "~"
+    participant_name = test_result.participant.participant_name if test_result.participant else "~"
+    channel_rank = CHANNEL_ORDER.index(test_result.channel) if test_result.channel in CHANNEL_ORDER else 99
+    return (category_label.lower(), participant_name.lower(), channel_rank, test_result.row_number or 0)
+
+
+@results_bp.route("/tests", methods=["GET"])
+@login_required
+def list_tests():
+    edition_id = get_current_edition_id()
+    tests = TestResult.query.filter_by(edition_id=edition_id).all()
+    tests.sort(key=_sort_key)
+
+    groups = []
+    current_key = None
+    for t in tests:
+        key = (t.category_id, t.participant_id)
+        if key != current_key:
+            groups.append({
+                "category_label": t.category.label() if t.category else "(catégorie supprimée)",
+                "participant_name": t.participant.participant_name if t.participant else "(participant supprimé)",
+                "participant_code": t.participant.code if t.participant else "",
+                "tests": [],
+            })
+            current_key = key
+        groups[-1]["tests"].append(build_test_view(t))
+
+    edition = get_edition(edition_id)
+    return render_template(
+        "results/tests_list.html", edition=edition, groups=groups,
+        channel_options=CHANNEL_LABELS, active_item=ACTIVE_ITEM_TESTS, menu_items=MENU_ITEMS,
+    )
+
+
+@results_bp.route("/tests/search", methods=["GET"])
+@login_required
+def search_tests():
+    edition_id = get_current_edition_id()
+    test_id_query = request.args.get("test_id", "").strip()
+    channel_query = request.args.get("channel", "").strip()
+    date_query = request.args.get("date", "").strip()
+
+    if not test_id_query and not channel_query and not date_query:
+        edition = get_edition(edition_id)
+        return render_template(
+            "results/search_results.html", edition=edition, active_item=ACTIVE_ITEM_TESTS, menu_items=MENU_ITEMS,
+            error="Merci de renseigner au moins un critère (numéro de test, canal ou date).", results=[],
+        )
+
+    query = TestResult.query.filter_by(edition_id=edition_id)
+    if test_id_query:
+        query = query.filter(TestResult.test_id.like(f"%{test_id_query}%"))
+    if channel_query:
+        query = query.filter_by(channel=channel_query)
+    candidates = query.all()
+
+    if date_query:
+        candidates = [
+            t for t in candidates
+            if date_query.lower() in str((t.raw_data or {}).get(
+                {"phone": "Call_Date"}.get(t.channel, "Day_Open"), ""
+            )).lower()
+        ]
+
+    edition = get_edition(edition_id)
+
+    if len(candidates) == 1:
+        return test_detail(candidates[0].id)
+
+    views = [build_test_view(t) for t in candidates]
+    return render_template(
+        "results/search_results.html", edition=edition, active_item=ACTIVE_ITEM_TESTS, menu_items=MENU_ITEMS,
+        error=None, results=views,
+    )
+
+
+@results_bp.route("/tests/<int:test_result_id>", methods=["GET"])
+@login_required
+def test_detail(test_result_id):
+    edition_id = get_current_edition_id()
+    t = TestResult.query.get(test_result_id)
+    if not t or t.edition_id != edition_id:
+        edition = get_edition(edition_id)
+        return render_template(
+            "results/search_results.html", edition=edition, active_item=ACTIVE_ITEM_TESTS, menu_items=MENU_ITEMS,
+            error="Ce test est introuvable pour l'édition en cours.", results=[],
+        )
+
+    edition = get_edition(edition_id)
+    view = build_test_view(t)
+    return render_template(
+        "results/test_detail.html", edition=edition, active_item=ACTIVE_ITEM_TESTS, menu_items=MENU_ITEMS,
+        test=view,
+    )

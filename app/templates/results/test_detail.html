@@ -1,0 +1,57 @@
+{% extends "app_shell.html" %}
+{% block content %}
+<div class="page-block test-detail-page">
+  <h1 class="page-title">Détail du test {{ test.test_id }}</h1>
+  <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
+
+  <div class="detail-header-card">
+    <div class="detail-header-item">
+      <span class="detail-header-label">Catégorie</span>
+      <span class="detail-header-value">{{ test.category_label }}</span>
+    </div>
+    <div class="detail-header-item">
+      <span class="detail-header-label">Participant</span>
+      <span class="detail-header-value">{{ test.participant_name }}{% if test.participant_code %} ({{ test.participant_code }}){% endif %}</span>
+    </div>
+    <div class="detail-header-item">
+      <span class="detail-header-label">Canal</span>
+      <span class="detail-header-value">{{ test.channel_label }}</span>
+    </div>
+    <div class="detail-header-item">
+      <span class="detail-header-label">Date</span>
+      <span class="detail-header-value">{{ test.date or '—' }}</span>
+    </div>
+  </div>
+
+  <h2 class="detail-section-title">Codes du test</h2>
+  <div class="table-card">
+    <div class="table-row table-header">
+      <div class="col col-detail-code">Code</div>
+      <div class="col col-detail-value">Valeur</div>
+      <div class="col col-detail-obs">Observation</div>
+    </div>
+    {% if not test.codes %}
+      <div class="table-empty">Aucun code renseigné pour ce test.</div>
+    {% endif %}
+    {% for code in test.codes %}
+      <div class="table-row">
+        <div class="col col-detail-code">Code {{ code.number }}</div>
+        <div class="col col-detail-value">{{ code.value if code.value is not none and code.value != '' else '—' }}</div>
+        <div class="col col-detail-obs">{{ code.observation if code.observation is not none and code.observation != '' else '—' }}</div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <h2 class="detail-section-title">Autres données</h2>
+  <div class="other-data-grid other-data-grid-page">
+    {% for key, value in test.other_fields.items() %}
+      <span class="other-data-key">{{ key }}</span>
+      <span class="other-data-value">{{ value if value is not none and value != '' else '—' }}</span>
+    {% endfor %}
+  </div>
+
+  <div class="actions">
+    <a href="{{ url_for('results.list_tests') }}" class="btn btn-primary">Retour à la liste des tests</a>
+  </div>
+</div>
+{% endblock %}
