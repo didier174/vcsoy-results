@@ -13,7 +13,7 @@ import io
 import os
 
 import openpyxl
-from openpyxl.styles import Font
+from openpyxl.styles import Font, Alignment
 from openpyxl.drawing.image import Image as XLImage
 from PIL import Image as PILImage
 
@@ -29,6 +29,17 @@ IMG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 
 FIRST_ITEM_ROW = 27
 MAX_ITEM_ROW = 35
+
+# Mappage fixe des lignes, répliquant exactement la structure du modèle
+# fourni : le produit VCSOY occupe toujours les lignes 27-30 (intitulé +
+# 3 puces, une seule quantité/prix portée par la 1ère puce, ligne 28).
+# Les produits indépendants (Right to use trademark, Goodies, ...) prennent
+# ensuite les lignes suivantes déjà fusionnées dans le modèle (31, 33, 34,
+# 35 — la ligne 32 sert d'espacement et n'est pas utilisée).
+ROW_VCSOY_HEADING = 27
+ROW_VCSOY_PRICED_BULLET = 28
+ROW_VCSOY_PLAIN_BULLETS = [29, 30]
+STANDALONE_ROWS = [31, 33, 34, 35]
 
 # Taille cible du logo dans le classeur Excel (en pixels) et dans le PDF
 # (en points) — la largeur est recalculée pour chaque logo afin de
@@ -169,27 +180,52 @@ def fill_invoice_xlsx(invoice):
     ws["W16"] = city_line
     ws["W17"] = invoice.bill_to_country
 
-    row = FIRST_ITEM_ROW
+    def _write_description(row, text, bold):
+        cell = ws[f"A{row}"]
+        cell.value = text
+        cell.font = Font(name=cell.font.name, size=cell.font.size, bold=bold)
+
+    def _write_amounts(row, quantity, unit_price, total):
+        ws[f"U{row}"] = quantity
+        ws[f"Z{row}"] = unit_price
+        ws[f"AF{row}"] = total
+
+    plain_bullet_rows = iter(ROW_VCSOY_PLAIN_BULLETS)
+    standalone_rows = iter(STANDALONE_ROWS)
+
     for item in invoice.line_items:
-        if row > MAX_ITEM_ROW:
-            break  # garde-fou : ne devrait pas arriver (5 produits maximum)
-        desc_cell = ws[f"A{row}"]
-        desc_cell.value = item["description"]
-        desc_cell.font = Font(
-            name=desc_cell.font.name, size=desc_cell.font.size, bold=bool(item.get("is_heading"))
-        )
-        if not item.get("is_heading"):
-            ws[f"U{row}"] = item["quantity"]
-            ws[f"Z{row}"] = item["unit_price"]
-            ws[f"AF{row}"] = item["total"]
-        row += 1
+        role = item.get("role")
+        if role == "vcsoy_heading":
+            _write_description(ROW_VCSOY_HEADING, item["description"], bold=True)
+        elif role == "vcsoy_priced":
+            _write_description(ROW_VCSOY_PRICED_BULLET, item["description"], bold=False)
+            _write_amounts(ROW_VCSOY_PRICED_BULLET, item["quantity"], item["unit_price"], item["total"])
+        elif role == "vcsoy_plain":
+            row = next(plain_bullet_rows, None)
+            if row is not None:
+                _write_description(row, item["description"], bold=False)
+        elif role == "standalone":
+            row = next(standalone_rows, None)
+            if row is not None:
+                _write_description(row, item["description"], bold=False)
+                _write_amounts(row, item["quantity"], item["unit_price"], item["total"])
 
     ws["AF38"] = invoice.subtotal
     ws["AF39"] = invoice.gst_amount
     ws["AF40"] = invoice.qst_amount
     ws["AF41"] = invoice.total_amount
 
-    ws["B40"] = labels["export_note"] if invoice.is_export else ""
+    # La mention d'exportation est encadrée d'un cadre en pointillés qui
+    # s'arrête à la colonne T (voir le modèle) : on fusionne B40:T40 et on
+    # active le retour à la ligne automatique pour que le texte ne déborde
+    # jamais au-delà de ce cadre, quelle que soit la langue.
+    if invoice.is_export:
+        ws["B40"] = labels["export_note"]
+        ws.merge_cells("B40:T40")
+        note_cell = ws["B40"]
+        note_cell.alignment = Alignment(wrap_text=True, vertical="center", horizontal="left")
+    else:
+        ws["B40"] = ""
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -276,13 +312,18 @@ def render_invoice_pdf(invoice):
             style_commands.append(("SPAN", (0, i), (-1, i)))
             style_commands.append(("FONTNAME", (0, i), (0, i), "Helvetica-Bold"))
             style_commands.append(("ALIGN", (0, i), (0, i), "LEFT"))
-        else:
+        elif "total" in item:
             table_data.append([
                 "- " + item["description"],
                 f"{item['quantity']:.2f}",
                 f"{item['unit_price']:,.2f} $",
                 f"{item['total']:,.2f} $",
             ])
+            style_commands.append(("ALIGN", (0, i), (0, i), "LEFT"))
+        else:
+            # Ligne descriptive sans prix propre (puce faisant partie d'un
+            # produit dont le prix est porté par une autre ligne).
+            table_data.append(["- " + item["description"], "", "", ""])
             style_commands.append(("ALIGN", (0, i), (0, i), "LEFT"))
 
     products_table = Table(table_data, colWidths=[255, 70, 90, 90])

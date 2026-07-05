@@ -1,8 +1,28 @@
 {% extends "app_shell.html" %}
 {% block content %}
 <div class="page-block">
-  <h1 class="page-title">Chargement d'un fichier de résultat</h1>
+  <h1 class="page-title">Chargement fichier résultat</h1>
   <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
+
+  <h2 class="detail-section-title">Fichiers déjà chargés</h2>
+  {% if not uploads %}
+    <div class="upload-card">
+      <p class="muted">Aucun fichier chargé pour cette édition pour le moment.</p>
+    </div>
+  {% else %}
+    <div class="uploaded-files-box">
+      {% for u in uploads %}
+        <div class="uploaded-file-row">
+          <span class="uploaded-file-name">{{ u.filename }}</span>
+          <span class="uploaded-file-meta">
+            {{ u.uploaded_at.strftime('%d/%m/%Y %H:%M') if u.uploaded_at else '' }}
+            · {{ u.total_count }} test(s)
+            {% if u.uploaded_by %}· {{ u.uploaded_by.email }}{% endif %}
+          </span>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
 
   <div class="upload-card">
     <p class="muted">

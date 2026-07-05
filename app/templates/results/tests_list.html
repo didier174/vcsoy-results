@@ -12,7 +12,7 @@
 
   {% if not groups %}
     <div class="upload-card">
-      <p class="muted">Aucun test chargé pour cette édition. Utilisez « Chargement d'un fichier de résultat » pour en importer.</p>
+      <p class="muted">Aucun test chargé pour cette édition. Utilisez « Chargement fichier résultat » pour en importer.</p>
     </div>
   {% endif %}
 
@@ -84,6 +84,9 @@
     </label>
     <label>Date
       <input type="text" name="date" placeholder="ex. 14/07/2026">
+    </label>
+    <label>Nom du participant
+      <input type="text" name="participant_name" placeholder="ex. Boutique ABC">
     </label>
     <div class="dialog-actions">
       <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Annuler</button>

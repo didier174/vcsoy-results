@@ -114,17 +114,19 @@
       <legend>Produits à facturer *</legend>
 
       <div class="product-group">
-        <p class="product-group-title">Voted Customer Service Of the Year (VCSOY)</p>
-        {% for p in vcsoy_products %}
-          <div class="product-row">
-            <label class="product-checkbox-label">
-              <input type="checkbox" class="edit-product-checkbox" name="product_{{ p.id }}" data-product-id="{{ p.id }}">
-              {{ p.label_fr }} <span class="product-label-en">({{ p.label_en }})</span>
-            </label>
-            <input type="text" id="edit_price_{{ p.id }}" name="price_{{ p.id }}" placeholder="Montant avant taxes ($)"
-                   class="product-price-input" disabled>
-          </div>
-        {% endfor %}
+        <div class="product-row product-row-vcsoy">
+          <label class="product-checkbox-label">
+            <input type="checkbox" class="edit-product-checkbox" name="product_{{ vcsoy_package_id }}" data-product-id="{{ vcsoy_package_id }}">
+            Voted Customer Service Of the Year (VCSOY)
+          </label>
+          <input type="text" id="edit_price_{{ vcsoy_package_id }}" name="price_{{ vcsoy_package_id }}" placeholder="Montant avant taxes ($)"
+                 class="product-price-input" disabled>
+        </div>
+        <ul class="product-bullets">
+          {% for bullet_en in vcsoy_package.bullets_en %}
+            <li>{{ bullet_en }} <span class="product-label-en">({{ vcsoy_package.bullets_fr[loop.index0] }})</span></li>
+          {% endfor %}
+        </ul>
       </div>
 
       <div class="product-group">

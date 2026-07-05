@@ -7,7 +7,7 @@ d'oubli lors du rendu d'un template qui étend app_shell.html.
 MENU_ITEMS = [
     "Configuration catégorie",
     "Configuration Participant",
-    "Chargement d'un fichier de résultat",
+    "Chargement fichier résultat",
     "Compilation des résultats",
     "Listes des tests",
     "Présentation des résultats",

@@ -728,6 +728,22 @@ a { text-decoration: none; color: inherit; }
   color: var(--muted);
 }
 
+.product-row-vcsoy { border-bottom: none; padding-bottom: 4px; }
+
+.product-bullets {
+  margin: 0 0 10px;
+  padding-left: 32px;
+  font-size: 12px;
+  color: var(--text);
+}
+.product-bullets li { margin-bottom: 3px; }
+
+.product-group-note {
+  padding-left: 32px;
+  font-size: 11px;
+  margin: 0 0 10px;
+}
+
 .col-invoice-desc { flex: 1 1 auto; }
 .col-invoice-amount { flex: 0 0 130px; text-align: right; }
 .invoice-heading { font-weight: 700; }

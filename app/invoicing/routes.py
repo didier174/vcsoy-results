@@ -22,7 +22,9 @@ from app.extensions import db
 from app.models import Participant, Invoice, ActionLog
 from app.editions import get_current_edition_id, get_edition
 from app.menu import MENU_ITEMS
-from app.invoicing.products import VCSOY_PRODUCTS, STANDALONE_PRODUCTS, ALL_PRODUCTS, vcsoy_heading, product_label
+from app.invoicing.products import (
+    VCSOY_PACKAGE_ID, VCSOY_PACKAGE, STANDALONE_PRODUCTS, vcsoy_heading, vcsoy_bullets, product_label,
+)
 from app.invoicing.taxes import compute_taxes
 from app.invoicing.generator import fill_invoice_xlsx, render_invoice_pdf
 
@@ -60,11 +62,15 @@ def _participants_json(participants):
 
 
 def _invoice_edit_payload(invoice):
-    products_data = [
-        {"product_id": item.get("product_id"), "unit_price": item.get("unit_price")}
-        for item in (invoice.line_items or [])
-        if not item.get("is_heading") and item.get("product_id")
-    ]
+    products_data = []
+    vcsoy_price = None
+    for item in (invoice.line_items or []):
+        if item.get("role") == "vcsoy_priced":
+            vcsoy_price = item.get("unit_price")
+        elif item.get("role") == "standalone" and item.get("product_id"):
+            products_data.append({"product_id": item["product_id"], "unit_price": item.get("unit_price")})
+    if vcsoy_price is not None:
+        products_data.insert(0, {"product_id": VCSOY_PACKAGE_ID, "unit_price": vcsoy_price})
     return {
         "id": invoice.id,
         "language": invoice.language or "fr",
@@ -152,15 +158,24 @@ def _validate_and_build(form, edition_id, edition, require_participant):
                 participant = None
     data["participant"] = participant
 
-    selected_vcsoy = [p for p in VCSOY_PRODUCTS if form.get(f"product_{p['id']}")]
+    selected_vcsoy = bool(form.get(f"product_{VCSOY_PACKAGE_ID}"))
     selected_standalone = [p for p in STANDALONE_PRODUCTS if form.get(f"product_{p['id']}")]
-    selected_all = selected_vcsoy + selected_standalone
 
-    if not selected_all:
+    if not selected_vcsoy and not selected_standalone:
         errors.append("Merci de sélectionner au moins un produit à facturer.")
 
     prices = {}
-    for product in selected_all:
+    if selected_vcsoy:
+        raw_price = form.get(f"price_{VCSOY_PACKAGE_ID}", "").strip().replace(",", ".")
+        try:
+            amount = float(raw_price)
+            if amount <= 0:
+                raise ValueError()
+            prices[VCSOY_PACKAGE_ID] = amount
+        except ValueError:
+            errors.append("Montant hors taxes invalide pour « Voted Customer Service Of the Year (VCSOY) ».")
+
+    for product in selected_standalone:
         raw_price = form.get(f"price_{product['id']}", "").strip().replace(",", ".")
         try:
             amount = float(raw_price)
@@ -175,26 +190,36 @@ def _validate_and_build(form, edition_id, edition, require_participant):
 
     line_items = []
     if selected_vcsoy:
+        amount = prices[VCSOY_PACKAGE_ID]
+        bullets = vcsoy_bullets(data["language"])
+        # Un seul produit, indissociable, présenté sur 4 lignes : l'intitulé
+        # (sans prix), puis les 3 puces descriptives. Le prix et la quantité
+        # de l'ensemble sont portés par la 1ère puce uniquement (comme dans
+        # le modèle fourni), les 2 autres puces restant de simples lignes
+        # descriptives sans montant.
         line_items.append({
+            "role": "vcsoy_heading",
             "description": vcsoy_heading(data["language"], edition_id),
             "is_heading": True,
         })
-        for product in selected_vcsoy:
-            amount = prices[product["id"]]
-            line_items.append({
-                "product_id": product["id"],
-                "description": product_label(product["id"], data["language"]),
-                "is_heading": False, "quantity": 1, "unit_price": amount, "total": amount,
-            })
+        line_items.append({
+            "role": "vcsoy_priced",
+            "description": bullets[0],
+            "is_heading": False, "quantity": 1, "unit_price": amount, "total": amount,
+        })
+        line_items.append({"role": "vcsoy_plain", "description": bullets[1], "is_heading": False})
+        line_items.append({"role": "vcsoy_plain", "description": bullets[2], "is_heading": False})
+
     for product in selected_standalone:
         amount = prices[product["id"]]
         line_items.append({
+            "role": "standalone",
             "product_id": product["id"],
             "description": product_label(product["id"], data["language"]),
             "is_heading": False, "quantity": 1, "unit_price": amount, "total": amount,
         })
 
-    subtotal = sum(i["total"] for i in line_items if not i.get("is_heading"))
+    subtotal = sum(i.get("total", 0) for i in line_items)
     tax = compute_taxes(subtotal, data["bill_to_country"])
 
     data["line_items"] = line_items
@@ -216,7 +241,7 @@ def list_invoices():
     return render_template(
         "invoicing/list.html", edition=get_edition(edition_id), invoices=invoices,
         edit_payloads=edit_payloads,
-        vcsoy_products=VCSOY_PRODUCTS, standalone_products=STANDALONE_PRODUCTS,
+        vcsoy_package=VCSOY_PACKAGE, vcsoy_package_id=VCSOY_PACKAGE_ID, standalone_products=STANDALONE_PRODUCTS,
         active_item=ACTIVE_ITEM, menu_items=MENU_ITEMS, error=None,
     )
 
@@ -228,7 +253,7 @@ def _render_list_with_error(error):
     return render_template(
         "invoicing/list.html", edition=get_edition(edition_id), invoices=invoices,
         edit_payloads=edit_payloads,
-        vcsoy_products=VCSOY_PRODUCTS, standalone_products=STANDALONE_PRODUCTS,
+        vcsoy_package=VCSOY_PACKAGE, vcsoy_package_id=VCSOY_PACKAGE_ID, standalone_products=STANDALONE_PRODUCTS,
         active_item=ACTIVE_ITEM, menu_items=MENU_ITEMS, error=error,
     )
 
@@ -241,7 +266,7 @@ def create_form():
     return render_template(
         "invoicing/create.html", edition=get_edition(edition_id), participants=participants,
         participants_json=_participants_json(participants),
-        vcsoy_products=VCSOY_PRODUCTS, standalone_products=STANDALONE_PRODUCTS,
+        vcsoy_package=VCSOY_PACKAGE, vcsoy_package_id=VCSOY_PACKAGE_ID, standalone_products=STANDALONE_PRODUCTS,
         errors=[], form_values={}, active_item=ACTIVE_ITEM, menu_items=MENU_ITEMS,
     )
 
@@ -260,7 +285,7 @@ def create_invoice():
         return render_template(
             "invoicing/create.html", edition=edition, participants=participants,
             participants_json=_participants_json(participants),
-            vcsoy_products=VCSOY_PRODUCTS, standalone_products=STANDALONE_PRODUCTS,
+            vcsoy_package=VCSOY_PACKAGE, vcsoy_package_id=VCSOY_PACKAGE_ID, standalone_products=STANDALONE_PRODUCTS,
             errors=errors, form_values=form, active_item=ACTIVE_ITEM, menu_items=MENU_ITEMS,
         )
 

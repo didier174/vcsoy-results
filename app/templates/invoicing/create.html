@@ -73,18 +73,21 @@
       <p class="muted">Cochez les produits concernés, puis indiquez leur montant hors taxes.</p>
 
       <div class="product-group">
-        <p class="product-group-title">Voted Customer Service Of the Year (VCSOY)</p>
-        {% for p in vcsoy_products %}
-          <div class="product-row">
-            <label class="product-checkbox-label">
-              <input type="checkbox" class="product-checkbox" name="product_{{ p.id }}" data-product-id="{{ p.id }}"
-                     {{ 'checked' if form_values.get('product_' ~ p.id) else '' }}>
-              {{ p.label_fr }} <span class="product-label-en">({{ p.label_en }})</span>
-            </label>
-            <input type="text" id="price_{{ p.id }}" name="price_{{ p.id }}" placeholder="Montant avant taxes ($)"
-                   value="{{ form_values.get('price_' ~ p.id, '') }}" class="product-price-input">
-          </div>
-        {% endfor %}
+        <div class="product-row product-row-vcsoy">
+          <label class="product-checkbox-label">
+            <input type="checkbox" class="product-checkbox" name="product_{{ vcsoy_package_id }}" data-product-id="{{ vcsoy_package_id }}"
+                   {{ 'checked' if form_values.get('product_' ~ vcsoy_package_id) else '' }}>
+            Voted Customer Service Of the Year (VCSOY)
+          </label>
+          <input type="text" id="price_{{ vcsoy_package_id }}" name="price_{{ vcsoy_package_id }}" placeholder="Montant avant taxes ($)"
+                 value="{{ form_values.get('price_' ~ vcsoy_package_id, '') }}" class="product-price-input">
+        </div>
+        <ul class="product-bullets">
+          {% for bullet_en in vcsoy_package.bullets_en %}
+            <li>{{ bullet_en }} <span class="product-label-en">({{ vcsoy_package.bullets_fr[loop.index0] }})</span></li>
+          {% endfor %}
+        </ul>
+        <p class="muted product-group-note">Produit unique et indissociable : une seule quantité, un seul montant pour l'ensemble des 4 lignes.</p>
       </div>
 
       <div class="product-group">

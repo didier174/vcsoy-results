@@ -1,5 +1,5 @@
 """
-Module « Chargement d'un fichier de résultat ».
+Module « Chargement fichier résultat ».
 
 Permet de charger un fichier Excel de résultats de tests mystères, de le
 valider intégralement (voir validation.py), et — seulement si aucune
@@ -19,7 +19,7 @@ from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
 from app.extensions import db
-from app.models import Category, Participant, TestResult, ActionLog
+from app.models import Category, Participant, TestResult, ActionLog, FileUpload
 from app.editions import get_current_edition_id, get_edition
 from app.menu import MENU_ITEMS
 from app.results.validation import validate_workbook, EXPECTED_SHEETS
@@ -27,7 +27,7 @@ from app.results.presentation import build_test_view, CHANNEL_LABELS, CHANNEL_OR
 
 results_bp = Blueprint("results", __name__, url_prefix="/results")
 
-ACTIVE_ITEM = "Chargement d'un fichier de résultat"
+ACTIVE_ITEM = "Chargement fichier résultat"
 ACTIVE_ITEM_TESTS = "Listes des tests"
 
 
@@ -54,9 +54,12 @@ def _render_report(**kwargs):
 @results_bp.route("/upload", methods=["GET"])
 @login_required
 def upload_page():
-    edition = get_edition(get_current_edition_id())
+    edition_id = get_current_edition_id()
+    edition = get_edition(edition_id)
+    uploads = FileUpload.query.filter_by(edition_id=edition_id).order_by(FileUpload.id.desc()).all()
     return render_template(
-        "results/upload.html", edition=edition, active_item=ACTIVE_ITEM, menu_items=MENU_ITEMS,
+        "results/upload.html", edition=edition, uploads=uploads,
+        active_item=ACTIVE_ITEM, menu_items=MENU_ITEMS,
     )
 
 
@@ -123,6 +126,12 @@ def upload_file():
             added += 1
     db.session.commit()
 
+    db.session.add(FileUpload(
+        edition_id=edition_id, filename=filename, uploaded_by_id=current_user.id,
+        added_count=added, updated_count=updated, total_count=len(valid_rows),
+    ))
+    db.session.commit()
+
     _log(
         "Chargement fichier résultat — succès",
         details=f"{filename} : {added} ajouté(s), {updated} mis à jour (édition {edition_id})",
@@ -175,12 +184,13 @@ def search_tests():
     test_id_query = request.args.get("test_id", "").strip()
     channel_query = request.args.get("channel", "").strip()
     date_query = request.args.get("date", "").strip()
+    participant_query = request.args.get("participant_name", "").strip()
 
-    if not test_id_query and not channel_query and not date_query:
+    if not test_id_query and not channel_query and not date_query and not participant_query:
         edition = get_edition(edition_id)
         return render_template(
             "results/search_results.html", edition=edition, active_item=ACTIVE_ITEM_TESTS, menu_items=MENU_ITEMS,
-            error="Merci de renseigner au moins un critère (numéro de test, canal ou date).", results=[],
+            error="Merci de renseigner au moins un critère (numéro de test, canal, date ou participant).", results=[],
         )
 
     query = TestResult.query.filter_by(edition_id=edition_id)
@@ -196,6 +206,12 @@ def search_tests():
             if date_query.lower() in str((t.raw_data or {}).get(
                 {"phone": "Call_Date"}.get(t.channel, "Day_Open"), ""
             )).lower()
+        ]
+
+    if participant_query:
+        candidates = [
+            t for t in candidates
+            if t.participant and participant_query.lower() in t.participant.participant_name.lower()
         ]
 
     edition = get_edition(edition_id)
