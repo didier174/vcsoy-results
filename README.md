@@ -303,7 +303,35 @@ navigateur (aucune bibliothèque JS externe), et les données nécessaires
 aux popups de la liste sont embarquées directement dans la page au
 chargement (pas d'aller-retour réseau supplémentaire au clic).
 
+## Étape 6 (web) — Administration
 
+Nouvel item de menu **« Administration »**, qui permet de gérer la liste
+des utilisateurs autorisés à se connecter (ajout par adresse e-mail,
+suppression), en complément de la variable d'environnement
+`ALLOWED_EMAILS` (dont les adresses restent affichées mais ne sont pas
+modifiables depuis cet écran, car elles proviennent de la configuration
+serveur). Cette liste est globale, indépendante de l'édition en cours.
+
+Le bouton « Rechercher un test » (étape 5) a aussi été déplacé en haut de
+la page « Listes des tests », au-dessus des résultats plutôt qu'en bas.
+
+## Étape 7 (web) — Facturation
+
+Nouvel item de menu **« Facturation »**, qui permet de générer une facture
+pour un participant de l'édition en cours : langue (français/anglais),
+numéro de facture, numéro de client, nom du client, date, sélection du
+participant puis des produits à facturer (le forfait VCSOY — présenté sur
+4 lignes mais facturé comme un seul produit — et des produits
+indépendants comme le droit d'usage de la marque ou les goodies).
+
+Les taxes du Québec (TPS 5 % + TVQ 9,975 %) sont calculées et appliquées
+automatiquement, sauf pour un participant dont l'adresse de facturation
+est hors Canada (exportation de services détaxée à 0 %, comme prévu par
+le modèle de facture fourni).
+
+La facture est téléchargeable en Excel (à partir du modèle fourni, pour
+permettre des ajustements manuels) et en PDF, et peut être modifiée ou
+supprimée depuis la liste des factures.
 
 ## Structure du projet
 
@@ -363,8 +391,8 @@ de tester avec les **vraies** bibliothèques en conditions réelles.
 
 Compilation des résultats (calcul du score par participant à partir des
 données maintenant en base), détermination des gagnants par catégorie,
-présentation des résultats, liste des lauréats, facturation, administration
-— au fur et à mesure de vos indications.
+présentation des résultats, liste des lauréats — au fur et à mesure de vos
+indications.
 
 Aucune migration de base de données n'est nécessaire pour cette étape
 (aucune nouvelle table, aucune nouvelle colonne sur une table existante).
