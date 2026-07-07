@@ -10,7 +10,7 @@ MENU_ITEMS = [
     "Chargement fichier résultat",
     "Liste des tests",
     "Compilation des résultats",
-    "Présentation des résultats",
+    "Liste des résultats",
     "Liste des lauréats",
     "Facturation",
     "Administration",

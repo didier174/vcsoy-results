@@ -19,6 +19,11 @@ n'ayant pas le même nombre total de codes (14 ou 15 selon le canal).
 Un test sans aucun critère valide (tous ses « Code N » vides ou « Non
 applicable ») n'a pas de note calculable et n'est pas pris en compte dans
 les moyennes par participant/canal.
+
+Ce module calcule aussi (étape 9) la note finale consolidée d'un
+participant, qui pondère ses notes par canal selon l'ensemble exact des
+canaux sur lesquels il a des tests (voir CONSOLIDATED_WEIGHTS), pour
+déterminer le lauréat de chaque catégorie.
 """
 
 from app.results.presentation import extract_codes, CHANNEL_ORDER
@@ -133,3 +138,89 @@ def build_compilation_rows(participants, tests):
 
     rows.sort(key=lambda r: (r["category_label"].lower(), r["participant_name"].lower()))
     return rows
+
+
+# --------------------------------------------------- Note finale consolidée
+#
+# Étape 9 : la note finale consolidée d'un participant sert à départager les
+# participants d'une même catégorie (lauréat). Sa formule dépend de
+# l'ensemble exact des canaux sur lesquels le participant a des tests
+# comptabilisés (nb_test > 0 pour ce canal) : chaque combinaison possible a
+# sa propre pondération, définie ci-dessous d'après le cahier des charges.
+# Une combinaison de canaux qui n'y figure pas n'a pas de note consolidée
+# calculable (résultat None).
+
+CONSOLIDATED_WEIGHTS = {
+    frozenset({"phone", "mail", "web", "rs", "chat"}): (
+        {"phone": 0.57, "mail": 0.23, "web": 0.08, "rs": 0.06, "chat": 0.06}, 1.0),
+    frozenset({"phone", "mail", "web", "rs"}): (
+        {"phone": 0.6, "mail": 0.24, "web": 0.09, "rs": 0.07}, 0.98),
+    frozenset({"phone", "mail", "web", "chat"}): (
+        {"phone": 0.6, "mail": 0.24, "web": 0.09, "chat": 0.07}, 0.98),
+    frozenset({"phone", "mail", "web"}): (
+        {"phone": 0.63, "mail": 0.27, "web": 0.1}, 0.95),
+    frozenset({"phone", "web", "rs", "chat"}): (
+        {"phone": 0.70, "web": 0.14, "rs": 0.08, "chat": 0.08}, 0.90),
+    frozenset({"phone", "web", "chat"}): (
+        {"phone": 0.75, "web": 0.15, "chat": 0.1}, 0.85),
+    frozenset({"phone", "web", "rs"}): (
+        {"phone": 0.75, "web": 0.15, "rs": 0.1}, 0.85),
+    frozenset({"phone", "web"}): (
+        {"phone": 0.8, "web": 0.2}, 0.80),
+}
+
+
+def compute_consolidated_score(channel_notes):
+    """
+    channel_notes : {canal: note sur 20} pour les seuls canaux sur lesquels
+    le participant a des tests comptabilisés. Retourne la note finale
+    consolidée (float, arrondie à 2 décimales), ou None si cette
+    combinaison exacte de canaux n'a pas de pondération définie.
+    """
+    present = frozenset(channel_notes.keys())
+    entry = CONSOLIDATED_WEIGHTS.get(present)
+    if entry is None:
+        return None
+    weights, multiplier = entry
+    raw = sum(weights[c] * channel_notes[c] for c in weights)
+    return round(raw * multiplier, 2)
+
+
+def row_channel_notes(row):
+    """Extrait {canal: note} pour les canaux d'une ligne de build_compilation_rows ayant au moins un test."""
+    return {
+        c: row["channels"][c]["note_20"]
+        for c in CHANNEL_ORDER
+        if row["channels"][c]["note_20"] is not None
+    }
+
+
+def build_category_winners(rows):
+    """
+    rows : sortie de build_compilation_rows (une ligne par participant).
+
+    Retourne une liste {category_code, category_label, winner_name,
+    winner_score}, une entrée par catégorie ayant au moins un participant
+    dont la note finale consolidée est calculable, triée par catégorie.
+    """
+    by_category = {}
+    for row in rows:
+        score = compute_consolidated_score(row_channel_notes(row))
+        if score is None:
+            continue
+        key = (row["category_code"], row["category_label"])
+        by_category.setdefault(key, []).append((score, row["participant_name"]))
+
+    winners = []
+    for (category_code, category_label), scores in by_category.items():
+        scores.sort(key=lambda s: s[0], reverse=True)
+        best_score, best_name = scores[0]
+        winners.append({
+            "category_code": category_code,
+            "category_label": category_label,
+            "winner_name": best_name,
+            "winner_score": best_score,
+        })
+
+    winners.sort(key=lambda w: w["category_label"].lower())
+    return winners

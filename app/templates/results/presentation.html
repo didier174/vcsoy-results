@@ -1,0 +1,132 @@
+{% extends "app_shell.html" %}
+{% block content %}
+<div class="page-block presentation-page">
+  <h1 class="page-title">Liste des résultats</h1>
+  <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
+
+  {% if not rows %}
+    <div class="upload-card">
+      <p class="muted">Aucun participant pour cette édition. Utilisez « Configuration Participant » pour en créer.</p>
+    </div>
+  {% else %}
+    <div class="compilation-table-wrap">
+      <table class="compilation-table">
+        <thead>
+          <tr>
+            <th>Participant</th>
+            <th>Cat</th>
+            {% for channel in channel_order %}
+              <th>{{ channel_labels[channel] }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              <td>{{ row.participant_name }}</td>
+              <td>{{ row.category_code }}</td>
+              {% for channel in channel_order %}
+                <td>{{ '%.2f'|format(row.channels[channel].note_20) if row.channels[channel].note_20 is not none else '—' }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="actions actions-top">
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('results-by-category-popup').showModal()">
+        Résultats par canal par catégorie
+      </button>
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('results-all-categories-popup').showModal()">
+        Résultats par canal toute catégorie
+      </button>
+    </div>
+
+    <h2 class="detail-section-title">Gagnants par catégorie (note finale consolidée)</h2>
+    {% if not winners %}
+      <div class="upload-card">
+        <p class="muted">
+          Aucun gagnant calculable pour le moment : soit aucun test n'est
+          encore comptabilisé, soit la combinaison de canaux testés par les
+          participants ne correspond à aucune pondération définie.
+        </p>
+      </div>
+    {% else %}
+      <div class="compilation-table-wrap">
+        <table class="compilation-table results-winners-table">
+          <thead>
+            <tr>
+              <th>Catégorie</th>
+              <th>Gagnant</th>
+              <th>Note finale</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for w in winners %}
+              <tr>
+                <td>{{ w.category_label }} ({{ w.category_code }})</td>
+                <td>{{ w.winner_name }}</td>
+                <td>{{ '%.2f'|format(w.winner_score) }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  {% endif %}
+</div>
+
+<!-- Popup : résultats par canal, pour une catégorie -->
+<dialog id="results-by-category-popup" class="app-dialog app-dialog-wide">
+  <h3>Résultats par canal par catégorie</h3>
+  <div class="results-filter-row">
+    <label class="dialog-input-label">
+      Catégorie
+      <select id="results-by-category-select-cat">
+        {% for code, label in categories %}
+          <option value="{{ code }}">{{ label }} ({{ code }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="dialog-input-label">
+      Canal
+      <select id="results-by-category-select-channel">
+        {% for key, label in channel_labels.items() %}
+          <option value="{{ key }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+  <div class="actions">
+    <button type="button" class="btn btn-primary" onclick="showResultsByCategory()">Afficher</button>
+  </div>
+  <div id="results-by-category-content" class="participant-tests-list"></div>
+  <div class="dialog-actions">
+    <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Fermer</button>
+  </div>
+</dialog>
+
+<!-- Popup : résultats par canal, toutes catégories -->
+<dialog id="results-all-categories-popup" class="app-dialog app-dialog-wide">
+  <h3>Résultats par canal, toutes catégories</h3>
+  <label class="dialog-input-label">
+    Canal
+    <select id="results-all-select-channel">
+      {% for key, label in channel_labels.items() %}
+        <option value="{{ key }}">{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <div class="actions">
+    <button type="button" class="btn btn-primary" onclick="showResultsAllCategories()">Afficher</button>
+  </div>
+  <div id="results-all-categories-content" class="participant-tests-list"></div>
+  <div class="dialog-actions">
+    <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Fermer</button>
+  </div>
+</dialog>
+
+<script type="application/json" id="presentation-data">{{ rows|tojson }}</script>
+<script src="{{ url_for('static', filename='js/presentation.js') }}"></script>
+{% endblock %}

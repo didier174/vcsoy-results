@@ -842,3 +842,52 @@ a { text-decoration: none; color: inherit; }
   top: 0;
   background: var(--bg);
 }
+
+/* ---------- Liste des résultats ---------- */
+
+.results-filter-row {
+  display: flex;
+  gap: 16px;
+}
+.results-filter-row .dialog-input-label {
+  flex: 1;
+}
+
+.results-winners-table td:nth-child(2) {
+  text-align: left;
+}
+
+/* ---------- Liste des lauréats ---------- */
+
+.winners-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.winner-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 20px;
+}
+
+.winner-trophy {
+  height: 44px;
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.winner-category {
+  flex: 0 0 260px;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.winner-name {
+  font-size: 16px;
+  font-weight: 700;
+}

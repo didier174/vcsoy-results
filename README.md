@@ -422,6 +422,58 @@ tests » et en cliquant dessus.
 Aucune migration de base de données n'est nécessaire pour ces
 améliorations.
 
+## Étape 9 (web) — Liste des résultats et Liste des lauréats
+
+> **Renommage** : l'item de menu « Présentation des résultats » (jusque-là
+> un écran d'attente) devient **« Liste des résultats »**, pour porter la
+> fonctionnalité décrite ci-dessous.
+
+**Liste des résultats.** Tableau succinct : un participant par ligne, avec
+le nom, le code de sa catégorie, et sa **note finale par canal** (moyenne
+des notes sur 20 de ses tests pour ce canal — la même valeur que dans
+Compilation des résultats). Deux boutons ouvrent chacun une popup :
+- **Résultats par canal par catégorie** : choisissez une catégorie et un
+  canal, la popup liste les participants de cette catégorie avec leur note
+  pour ce canal, du meilleur au moins bon.
+- **Résultats par canal toute catégorie** : choisissez un canal, la popup
+  liste tous les participants de l'édition (toutes catégories) avec leur
+  note pour ce canal, du meilleur au moins bon.
+
+En dessous, un tableau **« Gagnants par catégorie »** affiche, pour
+chaque catégorie, le participant en tête et sa **note finale consolidée**.
+
+**Note finale consolidée.** Elle pondère les notes par canal d'un
+participant selon l'ensemble exact des canaux sur lesquels il a des tests
+comptabilisés (les canaux sans aucun test ne comptent pas) :
+
+| Canaux testés | Pondération | Multiplicateur |
+|---|---|---|
+| Phone, Mail, Web, RS, Chat | 0,57 / 0,23 / 0,08 / 0,06 / 0,06 | — |
+| Phone, Mail, Web, RS | 0,6 / 0,24 / 0,09 / 0,07 | × 0,98 |
+| Phone, Mail, Web, Chat | 0,6 / 0,24 / 0,09 / 0,07 | × 0,98 |
+| Phone, Mail, Web | 0,63 / 0,27 / 0,1 | × 0,95 |
+| Phone, Web, RS, Chat | 0,70 / 0,14 / 0,08 / 0,08 | × 0,90 |
+| Phone, Web, Chat | 0,75 / 0,15 / 0,1 | × 0,85 |
+| Phone, Web, RS | 0,75 / 0,15 / 0,1 | × 0,85 |
+| Phone, Web | 0,8 / 0,2 | × 0,80 |
+
+> **Point d'attention** : toutes les combinaisons ci-dessus incluent le
+> canal Phone. Si un participant a des tests comptabilisés sur une
+> combinaison de canaux qui ne figure pas dans ce tableau (par exemple
+> Mail seul, ou Phone absent), sa note finale consolidée n'est **pas
+> calculable** : il n'est pas pris en compte pour désigner le gagnant de
+> sa catégorie. Si ce n'est pas le comportement souhaité, précisez-moi la
+> pondération à appliquer pour ces cas et j'ajuste.
+
+**Liste des lauréats.** Version « cérémonie » de ce même calcul : pour
+chaque catégorie ayant un gagnant calculable, affiche le trophée ESCDA,
+le nom de la catégorie et le nom du participant lauréat — sans détail de
+note, contrairement au tableau de la Liste des résultats.
+
+Aucune migration de base de données n'est nécessaire pour cette étape : le
+calcul se fait à la volée à partir des notes déjà calculées en
+Compilation des résultats.
+
 ## Structure du projet
 
 ```
@@ -447,7 +499,7 @@ vcsoy_web/
 │   │   ├── routes.py              # Chargement de fichier + Listes des tests + recherche + Compilation
 │   │   ├── validation.py          # Règles de contrôle du fichier Excel
 │   │   ├── presentation.py        # Extraction Code N / observation / autres données
-│   │   └── scoring.py             # Calcul des notes (Compilation des résultats)
+│   │   └── scoring.py             # Calcul des notes (Compilation, Liste des résultats, Lauréats)
 │   ├── templates/                # gabarits HTML (Jinja2)
 │   └── static/
 │       ├── css/style.css
@@ -479,8 +531,7 @@ de tester avec les **vraies** bibliothèques en conditions réelles.
 
 ## Prochaines étapes
 
-Détermination des gagnants par catégorie, présentation des résultats,
-liste des lauréats — au fur et à mesure de vos indications.
-
-Aucune migration de base de données n'est nécessaire pour cette étape
-(aucune nouvelle table, aucune nouvelle colonne sur une table existante).
+Toutes les fonctionnalités du menu ont maintenant une implémentation
+(compilation des résultats, présentation des résultats, lauréats,
+facturation, administration). Prochaines évolutions au fur et à mesure de
+vos indications.

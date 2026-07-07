@@ -1,0 +1,28 @@
+{% extends "app_shell.html" %}
+{% block content %}
+<div class="page-block winners-page">
+  <h1 class="page-title">Liste des lauréats</h1>
+  <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
+
+  {% if not winners %}
+    <div class="upload-card">
+      <p class="muted">
+        Aucun lauréat calculable pour le moment : soit aucun test n'est
+        encore comptabilisé, soit la combinaison de canaux testés par les
+        participants ne correspond à aucune pondération définie (voir
+        « Liste des résultats »).
+      </p>
+    </div>
+  {% else %}
+    <div class="winners-list">
+      {% for w in winners %}
+        <div class="winner-row">
+          <img src="{{ url_for('static', filename='img/trophy.png') }}" alt="Trophée" class="winner-trophy">
+          <span class="winner-category">{{ w.category_label }}</span>
+          <span class="winner-name">{{ w.winner_name }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

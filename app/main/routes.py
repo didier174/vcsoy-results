@@ -50,6 +50,10 @@ def module(item_name):
         return redirect(url_for("results.compilation_results"))
     if item_name in ("Liste des tests", "Présentation de la liste de test"):
         return redirect(url_for("results.list_tests"))
+    if item_name == "Liste des résultats":
+        return redirect(url_for("results.presentation_results"))
+    if item_name == "Liste des lauréats":
+        return redirect(url_for("results.winners_page"))
     if item_name == "Administration":
         return redirect(url_for("admin.list_users"))
     if item_name == "Facturation":

@@ -24,13 +24,15 @@ from app.editions import get_current_edition_id, get_edition
 from app.menu import MENU_ITEMS
 from app.results.validation import validate_workbook, EXPECTED_SHEETS
 from app.results.presentation import build_test_view, CHANNEL_LABELS, CHANNEL_ORDER
-from app.results.scoring import build_compilation_rows
+from app.results.scoring import build_compilation_rows, build_category_winners
 
 results_bp = Blueprint("results", __name__, url_prefix="/results")
 
 ACTIVE_ITEM = "Chargement fichier résultat"
 ACTIVE_ITEM_TESTS = "Liste des tests"
 ACTIVE_ITEM_COMPILATION = "Compilation des résultats"
+ACTIVE_ITEM_PRESENTATION = "Liste des résultats"
+ACTIVE_ITEM_WINNERS = "Liste des lauréats"
 
 
 def _log(action, details=""):
@@ -226,6 +228,48 @@ def compilation_results():
         "results/compilation.html", edition=edition, rows=rows,
         channel_order=CHANNEL_ORDER, channel_labels=CHANNEL_LABELS,
         active_item=ACTIVE_ITEM_COMPILATION, menu_items=MENU_ITEMS,
+    )
+
+
+# ------------------------------------------------------- Liste des résultats
+
+@results_bp.route("/presentation", methods=["GET"])
+@login_required
+def presentation_results():
+    edition_id = get_current_edition_id()
+    participants = Participant.query.filter_by(edition_id=edition_id).all()
+    tests = TestResult.query.filter_by(edition_id=edition_id).all()
+    rows = build_compilation_rows(participants, tests)
+    winners_list = build_category_winners(rows)
+
+    categories = sorted(
+        {(r["category_code"], r["category_label"]) for r in rows},
+        key=lambda c: c[1].lower(),
+    )
+
+    edition = get_edition(edition_id)
+    return render_template(
+        "results/presentation.html", edition=edition, rows=rows, categories=categories,
+        winners=winners_list, channel_order=CHANNEL_ORDER, channel_labels=CHANNEL_LABELS,
+        active_item=ACTIVE_ITEM_PRESENTATION, menu_items=MENU_ITEMS,
+    )
+
+
+# -------------------------------------------------------- Liste des lauréats
+
+@results_bp.route("/winners", methods=["GET"])
+@login_required
+def winners_page():
+    edition_id = get_current_edition_id()
+    participants = Participant.query.filter_by(edition_id=edition_id).all()
+    tests = TestResult.query.filter_by(edition_id=edition_id).all()
+    rows = build_compilation_rows(participants, tests)
+    winners_list = build_category_winners(rows)
+
+    edition = get_edition(edition_id)
+    return render_template(
+        "results/winners.html", edition=edition, winners=winners_list,
+        active_item=ACTIVE_ITEM_WINNERS, menu_items=MENU_ITEMS,
     )
 
 
