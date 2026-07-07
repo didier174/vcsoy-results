@@ -448,7 +448,17 @@ a { text-decoration: none; color: inherit; }
   flex-shrink: 0;
 }
 
-/* ---------- Listes des tests ---------- */
+/* ---------- Liste des tests ---------- */
+
+.tests-total-badge {
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--sidebar-bg);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 5px 14px;
+  white-space: nowrap;
+}
 
 .participant-group {
   margin-bottom: 28px;

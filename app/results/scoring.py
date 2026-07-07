@@ -90,6 +90,7 @@ def build_compilation_rows(participants, tests):
         if score is None:
             continue
         tests_by_participant.setdefault(t.participant_id, []).append({
+            "id": t.id,
             "test_id": t.test_id,
             "channel": t.channel,
             **score,

@@ -399,6 +399,29 @@ lieu du code de la **catégorie**. Corrigé.
 
 Aucune migration de base de données n'est nécessaire pour ces correctifs.
 
+## Étape 8 ter — Trois améliorations
+
+**1. Liste des tests : renommage et compteur.** L'item de menu « Listes
+des tests » devient **« Liste des tests »** ; le nombre total de tests en
+base pour l'édition en cours est affiché en haut à droite de la page.
+
+**2. Chargement fichier résultat : annuler un fichier.** Un bouton
+**« Annuler un fichier »** permet de choisir, parmi les fichiers déjà
+chargés, celui à annuler : toutes les données de test qui en proviennent
+sont alors **supprimées définitivement** de la base (et le fichier
+disparaît de la liste). Une **double confirmation** est exigée (une case à
+cocher à cocher explicitement, puis une confirmation navigateur), l'action
+étant irréversible.
+
+**3. Compilation des résultats : accès au détail d'un test.** Dans la
+popup listant les tests d'un participant, l'« Id Mystery Test » est
+maintenant affiché en gras et cliquable : un clic ouvre la page de détail
+du test, la même que celle obtenue en cherchant un test dans « Liste des
+tests » et en cliquant dessus.
+
+Aucune migration de base de données n'est nécessaire pour ces
+améliorations.
+
 ## Structure du projet
 
 ```

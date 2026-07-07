@@ -4,7 +4,24 @@
   <h1 class="page-title">Chargement fichier résultat</h1>
   <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
 
-  <h2 class="detail-section-title">Fichiers déjà chargés</h2>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-list">
+        {% for category, message in messages %}
+          <p class="flash {{ 'flash-error' if category == 'error' else 'flash-success' }}">{{ message }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <div class="page-header-row">
+    <h2 class="detail-section-title" style="margin: 0;">Fichiers déjà chargés</h2>
+    {% if uploads %}
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('cancel-upload-popup').showModal()">
+        Annuler un fichier
+      </button>
+    {% endif %}
+  </div>
   {% if not uploads %}
     <div class="upload-card">
       <p class="muted">Aucun fichier chargé pour cette édition pour le moment.</p>
@@ -42,4 +59,36 @@
     </form>
   </div>
 </div>
+
+{% if uploads %}
+  <dialog id="cancel-upload-popup" class="app-dialog">
+    <h3>Annuler un fichier</h3>
+    <p class="dialog-field">
+      Cette action supprime <strong>définitivement</strong> toutes les données
+      de test associées au fichier choisi, pour cette édition. Cette
+      opération est <strong>irréversible</strong>.
+    </p>
+    <form method="post" action="{{ url_for('results.cancel_upload') }}" id="cancel-upload-form">
+      <label class="dialog-input-label">
+        Fichier à annuler
+        <select name="filename" required>
+          {% for u in uploads %}
+            <option value="{{ u.filename }}">{{ u.filename }} ({{ u.total_count }} test(s))</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="dialog-input-label" style="display: flex; align-items: center; gap: 8px; margin-top: 14px;">
+        <input type="checkbox" required style="width: auto;">
+        <span>Je confirme vouloir supprimer définitivement toutes les données de ce fichier.</span>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Fermer</button>
+        <button type="submit" class="btn btn-primary"
+                onclick="return confirm('Confirmez-vous la suppression définitive de toutes les données de ce fichier ? Cette action est irréversible.');">
+          Supprimer définitivement
+        </button>
+      </div>
+    </form>
+  </dialog>
+{% endif %}
 {% endblock %}

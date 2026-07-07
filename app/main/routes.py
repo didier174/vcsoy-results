@@ -48,7 +48,7 @@ def module(item_name):
         return redirect(url_for("results.upload_page"))
     if item_name == "Compilation des résultats":
         return redirect(url_for("results.compilation_results"))
-    if item_name in ("Listes des tests", "Présentation de la liste de test"):
+    if item_name in ("Liste des tests", "Présentation de la liste de test"):
         return redirect(url_for("results.list_tests"))
     if item_name == "Administration":
         return redirect(url_for("admin.list_users"))

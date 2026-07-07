@@ -28,6 +28,9 @@ function showParticipantTests(participantId, buttonEl) {
     empty.textContent = "Aucun test pris en compte pour ce participant.";
     container.appendChild(empty);
   } else {
+    const popup = document.getElementById("participant-tests-popup");
+    const detailBase = popup.dataset.testDetailBase.replace(/0$/, "");
+
     const table = document.createElement("table");
     table.className = "participant-tests-table";
     table.innerHTML =
@@ -36,10 +39,13 @@ function showParticipantTests(participantId, buttonEl) {
     tests.forEach((t) => {
       const tr = document.createElement("tr");
       tr.innerHTML =
-        "<td>" + t.test_id + "</td>" +
+        "<td><strong><button type=\"button\" class=\"link-button\">" + t.test_id + "</button></strong></td>" +
         "<td>" + (CHANNEL_LABELS_JS[t.channel] || t.channel) + "</td>" +
         "<td>" + t.note_brute + " / " + t.note_max + "</td>" +
         "<td>" + t.note_20.toFixed(2) + "</td>";
+      tr.querySelector("button").addEventListener("click", () => {
+        window.location.href = detailBase + t.id;
+      });
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);

@@ -1,5 +1,5 @@
 /*
- * Popups de la page "Listes des tests" :
+ * Popups de la page "Liste des tests" :
  * - valeur + observation d'un Code N (données déjà présentes sur la page,
  *   embarquées en JSON par test, donc pas d'aller-retour réseau)
  * - "Autres données" d'un test

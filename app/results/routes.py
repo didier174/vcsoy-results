@@ -14,7 +14,7 @@ l'utilisateur corrige le fichier avant de le recharger.
 import io
 
 import openpyxl
-from flask import Blueprint, render_template, request
+from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
@@ -29,7 +29,7 @@ from app.results.scoring import build_compilation_rows
 results_bp = Blueprint("results", __name__, url_prefix="/results")
 
 ACTIVE_ITEM = "Chargement fichier résultat"
-ACTIVE_ITEM_TESTS = "Listes des tests"
+ACTIVE_ITEM_TESTS = "Liste des tests"
 ACTIVE_ITEM_COMPILATION = "Compilation des résultats"
 
 
@@ -103,6 +103,32 @@ def upload_page():
         "results/upload.html", edition=edition, uploads=uploads,
         active_item=ACTIVE_ITEM, menu_items=MENU_ITEMS,
     )
+
+
+@results_bp.route("/upload/cancel", methods=["POST"])
+@login_required
+def cancel_upload():
+    """
+    Supprime définitivement un fichier déjà chargé : son entrée dans
+    l'historique (FileUpload) et tous les TestResult qui en proviennent
+    pour l'édition en cours. Aucun autre fichier n'est affecté.
+    """
+    edition_id = get_current_edition_id()
+    filename = request.form.get("filename", "").strip()
+    if not filename:
+        flash("Merci de choisir un fichier à annuler.", "error")
+        return redirect(url_for("results.upload_page"))
+
+    deleted = TestResult.query.filter_by(edition_id=edition_id, source_filename=filename).delete()
+    FileUpload.query.filter_by(edition_id=edition_id, filename=filename).delete()
+    db.session.commit()
+
+    _log(
+        "Annulation fichier résultat",
+        details=f"{filename} : {deleted} test(s) supprimé(s) (édition {edition_id})",
+    )
+    flash(f"Fichier « {filename} » annulé : {deleted} test(s) supprimé(s) de la base.", "success")
+    return redirect(url_for("results.upload_page"))
 
 
 @results_bp.route("/upload", methods=["POST"])
@@ -203,7 +229,7 @@ def compilation_results():
     )
 
 
-# ----------------------------------------------------- Listes des tests
+# ----------------------------------------------------- Liste des tests
 
 def _sort_key(test_result):
     category_label = test_result.category.label() if test_result.category else "~"
@@ -235,7 +261,7 @@ def list_tests():
 
     edition = get_edition(edition_id)
     return render_template(
-        "results/tests_list.html", edition=edition, groups=groups,
+        "results/tests_list.html", edition=edition, groups=groups, total_tests=len(tests),
         channel_options=CHANNEL_LABELS, active_item=ACTIVE_ITEM_TESTS, menu_items=MENU_ITEMS,
     )
 

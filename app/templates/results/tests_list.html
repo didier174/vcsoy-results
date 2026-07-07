@@ -1,7 +1,10 @@
 {% extends "app_shell.html" %}
 {% block content %}
 <div class="page-block tests-page">
-  <h1 class="page-title">Listes des tests</h1>
+  <div class="page-header-row">
+    <h1 class="page-title">Liste des tests</h1>
+    <span class="tests-total-badge">{{ total_tests }} test(s) au total</span>
+  </div>
   <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
 
   <div class="actions actions-top">
