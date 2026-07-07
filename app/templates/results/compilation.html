@@ -38,7 +38,7 @@
                   {{ row.participant_name }}
                 </button>
               </td>
-              <td>{{ row.participant_code }}</td>
+              <td>{{ row.category_code }}</td>
               {% for channel in channel_order %}
                 <td>{{ row.channels[channel].nb_test }}</td>
                 <td>{{ '%.2f'|format(row.channels[channel].note_20) if row.channels[channel].note_20 is not none else '—' }}</td>

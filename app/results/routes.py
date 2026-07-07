@@ -47,16 +47,56 @@ def _render_report(**kwargs):
     defaults = dict(
         edition=edition, active_item=ACTIVE_ITEM, menu_items=MENU_ITEMS,
         success=False, global_error=None, errors=[], filename=None,
-        added=0, updated=0, total=0,
+        added=0, updated=0, total=0, invalid_channels={},
     )
     defaults.update(kwargs)
     return render_template("results/report.html", **defaults)
+
+
+def _backfill_missing_file_uploads(edition_id):
+    """
+    Le modèle FileUpload (historique des chargements) a été introduit après
+    que des fichiers de résultats aient déjà été chargés en production : ces
+    chargements antérieurs n'ont donc pas de ligne FileUpload, alors que les
+    TestResult correspondants existent bel et bien (avec leur
+    source_filename/uploaded_at/uploaded_by_id d'origine, présents depuis le
+    tout premier chargement). On reconstitue ici, une fois pour toutes, les
+    lignes FileUpload manquantes à partir de ces données déjà en base.
+    """
+    tracked_filenames = {
+        fu.filename for fu in FileUpload.query.filter_by(edition_id=edition_id).all()
+    }
+    tests = (
+        TestResult.query.filter_by(edition_id=edition_id)
+        .filter(TestResult.source_filename.isnot(None))
+        .all()
+    )
+
+    by_filename = {}
+    for t in tests:
+        by_filename.setdefault(t.source_filename, []).append(t)
+
+    created = False
+    for filename, group in by_filename.items():
+        if filename in tracked_filenames:
+            continue
+        uploaded_at = min((t.uploaded_at for t in group if t.uploaded_at), default=None)
+        db.session.add(FileUpload(
+            edition_id=edition_id, filename=filename,
+            uploaded_by_id=group[0].uploaded_by_id, uploaded_at=uploaded_at,
+            added_count=len(group), updated_count=0, total_count=len(group),
+        ))
+        created = True
+
+    if created:
+        db.session.commit()
 
 
 @results_bp.route("/upload", methods=["GET"])
 @login_required
 def upload_page():
     edition_id = get_current_edition_id()
+    _backfill_missing_file_uploads(edition_id)
     edition = get_edition(edition_id)
     uploads = FileUpload.query.filter_by(edition_id=edition_id).order_by(FileUpload.id.desc()).all()
     return render_template(
@@ -98,11 +138,14 @@ def upload_file():
     categories = Category.query.filter_by(edition_id=edition_id).all()
     participants = Participant.query.filter_by(edition_id=edition_id).all()
 
-    errors, valid_rows = validate_workbook(wb, categories, participants)
+    errors, valid_rows, invalid_channels = validate_workbook(wb, categories, participants)
 
     if errors:
         _log("Chargement fichier résultat — échec", details=f"{filename} : {len(errors)} erreur(s) (édition {edition_id})")
-        return _render_report(success=False, errors=errors, filename=filename)
+        invalid_channels_view = {
+            sheet: sorted(names) for sheet, names in invalid_channels.items()
+        }
+        return _render_report(success=False, errors=errors, filename=filename, invalid_channels=invalid_channels_view)
 
     existing_by_test_id = {tr.test_id: tr for tr in TestResult.query.filter_by(edition_id=edition_id).all()}
     added, updated = 0, 0

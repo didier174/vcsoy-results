@@ -121,7 +121,7 @@ def build_compilation_rows(participants, tests):
         rows.append({
             "participant_id": participant.id,
             "participant_name": participant.participant_name,
-            "participant_code": participant.code,
+            "category_code": participant.category.code if participant.category else "",
             "category_label": participant.category_label(),
             "channels": channels,
             "note_brute": overall_brute,

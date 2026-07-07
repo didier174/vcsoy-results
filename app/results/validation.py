@@ -13,6 +13,10 @@ règles définies dans le cahier des charges :
 - Id Mystery Tester est obligatoire dès qu'une ligne a un ID Mystery Test.
 - Sur l'onglet Phone spécifiquement : Call_Date, Call_hour et Call Duration
   sont également obligatoires (ce sont des colonnes propres à cet onglet).
+- Le canal de l'onglet (Phone, Email, Web Navigation, Social Networks, Chat)
+  doit être déclaré actif pour le participant visé (case à cocher du canal
+  dans Configuration Participant) : un test chargé pour un canal non coché
+  chez ce participant est une erreur.
 
 Une ligne entièrement vide est ignorée (pas une erreur).
 """
@@ -36,6 +40,17 @@ EXPECTED_SHEETS = list(CHANNELS.keys())
 
 CODE_COLUMN_REGEX = re.compile(r"^code\s*\d+$", re.IGNORECASE)
 VALID_CODE_VALUES = {"0", "1", "2", "non applicable"}
+
+# Nom du champ Participant (case à cocher) correspondant à chaque canal, pour
+# vérifier qu'un test n'est chargé que pour un canal déclaré actif pour ce
+# participant dans Configuration Participant.
+CHANNEL_FIELD_BY_KEY = {
+    "phone": "channel_phone",
+    "mail": "channel_mail",
+    "web": "channel_web",
+    "rs": "channel_rs",
+    "chat": "channel_chat",
+}
 
 # Colonnes obligatoires supplémentaires, propres à l'onglet Phone.
 PHONE_EXTRA_REQUIRED = ["Call_Date", "Call_hour", "Call Duration"]
@@ -77,16 +92,19 @@ def validate_workbook(wb, categories, participants):
     categories : liste des Category de l'édition en cours
     participants : liste des Participant de l'édition en cours
 
-    Retourne (errors, valid_rows) :
+    Retourne (errors, valid_rows, invalid_channels) :
     - errors : liste de dicts {sheet, row, col_letter, message}
     - valid_rows : liste de dicts prêts à insérer en base (uniquement
       pertinent si errors est vide, puisque le chargement est tout-ou-rien)
+    - invalid_channels : dict {nom d'onglet: {noms de participants}} pour les
+      tests trouvés sur un canal non déclaré actif chez le participant visé
     """
     category_by_code = {c.code: c for c in categories if c.code}
     participant_by_key = {(p.category_id, p.code): p for p in participants if p.code}
 
     errors = []
     valid_rows = []
+    invalid_channels = {}
 
     for sheet_name, config in CHANNELS.items():
         if sheet_name not in wb.sheetnames:
@@ -132,6 +150,15 @@ def validate_workbook(wb, categories, participants):
                         participant = participant_by_key.get((category.id, pp))
                         if not participant:
                             row_errors.append((1, f"Code participant « {pp} » inconnu pour la catégorie « {cc} »."))
+                        else:
+                            channel_field = CHANNEL_FIELD_BY_KEY[config["key"]]
+                            if not getattr(participant, channel_field):
+                                row_errors.append((
+                                    1,
+                                    f"Le canal « {sheet_name} » n'est pas déclaré actif pour le participant "
+                                    f"« {participant.participant_name} » (case décochée dans Configuration Participant).",
+                                ))
+                                invalid_channels.setdefault(sheet_name, set()).add(participant.participant_name)
 
                     lo, hi = config["range"]
                     num = int(num_str)
@@ -183,4 +210,4 @@ def validate_workbook(wb, categories, participants):
                     "raw_data": raw_data,
                 })
 
-    return errors, valid_rows
+    return errors, valid_rows, invalid_channels

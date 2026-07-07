@@ -373,6 +373,32 @@ Aucune migration de base de données n'est nécessaire pour cette étape : le
 calcul se fait à la volée à partir des données déjà en base
 (`test_result.raw_data`), rien n'est stocké de nouveau.
 
+## Étape 8 bis — Trois correctifs
+
+**1. Contrôle du canal actif au chargement d'un fichier de résultat.**
+Un test n'est désormais accepté que si le canal de l'onglet (Phone, Email,
+Web Navigation, Social Networks, Chat) est déclaré actif pour le
+participant visé (case cochée dans Configuration Participant). Comme pour
+les autres règles, le chargement est tout-ou-rien : si un seul test porte
+sur un canal non actif, rien n'est enregistré. Une popup dédiée s'affiche
+en plus de la liste d'erreurs habituelle, pour indiquer clairement quel(s)
+canal(aux) posent problème et pour quel(s) participant(s).
+
+**2. Fichiers déjà chargés introuvables dans la liste.** Le modèle qui
+garde l'historique des chargements (`FileUpload`) a été ajouté après coup
+(étape 7 bis) — les fichiers chargés avant cette étape n'ont donc jamais eu
+de ligne correspondante, même si leurs tests sont bien en base. La page
+reconstruit maintenant automatiquement, une fois pour toutes, l'historique
+manquant à partir des tests déjà enregistrés (`test_result.source_filename`
+/ `uploaded_at` / `uploaded_by_id`, présents depuis le tout premier
+chargement) : aucune perte de données, aucune manipulation de votre part.
+
+**3. Compilation des résultats : mauvais code affiché.** La colonne
+« Cat » affichait par erreur le code du **participant** (01, 02, 03...) au
+lieu du code de la **catégorie**. Corrigé.
+
+Aucune migration de base de données n'est nécessaire pour ces correctifs.
+
 ## Structure du projet
 
 ```

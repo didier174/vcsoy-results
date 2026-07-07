@@ -33,4 +33,26 @@
     <a href="{{ url_for('results.upload_page') }}" class="btn btn-primary">Fermer</a>
   </div>
 </div>
+
+{% if invalid_channels %}
+  <dialog id="invalid-channels-popup" class="app-dialog">
+    <h3>Canal non actif pour le participant</h3>
+    <p class="dialog-field">
+      Le chargement a été refusé : ce fichier contient des tests pour un ou
+      plusieurs canaux qui ne sont pas déclarés actifs pour le participant
+      visé (case décochée dans Configuration Participant). Corrigez la
+      configuration du participant, ou retirez ces tests du fichier, puis
+      rechargez.
+    </p>
+    <ul class="error-report-list">
+      {% for sheet, participant_names in invalid_channels.items() %}
+        <li><strong>{{ sheet }}</strong> : {{ participant_names|join(', ') }}</li>
+      {% endfor %}
+    </ul>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-primary" onclick="this.closest('dialog').close()">Compris</button>
+    </div>
+  </dialog>
+  <script>document.getElementById('invalid-channels-popup').showModal();</script>
+{% endif %}
 {% endblock %}
