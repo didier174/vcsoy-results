@@ -24,11 +24,13 @@ from app.editions import get_current_edition_id, get_edition
 from app.menu import MENU_ITEMS
 from app.results.validation import validate_workbook, EXPECTED_SHEETS
 from app.results.presentation import build_test_view, CHANNEL_LABELS, CHANNEL_ORDER
+from app.results.scoring import build_compilation_rows
 
 results_bp = Blueprint("results", __name__, url_prefix="/results")
 
 ACTIVE_ITEM = "Chargement fichier résultat"
 ACTIVE_ITEM_TESTS = "Listes des tests"
+ACTIVE_ITEM_COMPILATION = "Compilation des résultats"
 
 
 def _log(action, details=""):
@@ -138,6 +140,24 @@ def upload_file():
     )
 
     return _render_report(success=True, filename=filename, added=added, updated=updated, total=len(valid_rows))
+
+
+# --------------------------------------------- Compilation des résultats
+
+@results_bp.route("/compilation", methods=["GET"])
+@login_required
+def compilation_results():
+    edition_id = get_current_edition_id()
+    participants = Participant.query.filter_by(edition_id=edition_id).all()
+    tests = TestResult.query.filter_by(edition_id=edition_id).all()
+    rows = build_compilation_rows(participants, tests)
+
+    edition = get_edition(edition_id)
+    return render_template(
+        "results/compilation.html", edition=edition, rows=rows,
+        channel_order=CHANNEL_ORDER, channel_labels=CHANNEL_LABELS,
+        active_item=ACTIVE_ITEM_COMPILATION, menu_items=MENU_ITEMS,
+    )
 
 
 # ----------------------------------------------------- Listes des tests

@@ -23,6 +23,8 @@
           <a href="{{ url_for('participants.list_participants') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
         {% elif item == "Chargement fichier résultat" %}
           <a href="{{ url_for('results.upload_page') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
+        {% elif item == "Compilation des résultats" %}
+          <a href="{{ url_for('results.compilation_results') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
         {% elif item == "Listes des tests" %}
           <a href="{{ url_for('results.list_tests') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
         {% elif item == "Administration" %}

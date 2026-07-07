@@ -333,6 +333,46 @@ La facture est téléchargeable en Excel (à partir du modèle fourni, pour
 permettre des ajustements manuels) et en PDF, et peut être modifiée ou
 supprimée depuis la liste des factures.
 
+## Étape 8 (web) — Compilation des résultats
+
+Nouvel item de menu **« Compilation des résultats »**, qui calcule et
+affiche la note de chaque participant à partir des tests déjà chargés
+(« Chargement fichier résultat »).
+
+**Calcul de la note d'un test** : on additionne la valeur (0, 1 ou 2) de
+chaque colonne « Code N » renseignée (une valeur vide ou « Non
+applicable » exclut ce critère du calcul, aussi bien du numérateur que du
+dénominateur). Un code précis, propre à chaque canal, compte double :
+Code 13 pour Phone, Code 11 pour Mail/Web Navigation/Social Networks, Code
+10 pour Chat. La **note brute** obtenue est ramenée sur 20 (proportionnellement
+au maximum atteignable compte tenu du nombre de critères réellement
+valides pour ce test), ce qui permet de comparer des tests ayant des
+critères « Non applicable » différents ou appartenant à des canaux dont
+le nombre total de codes diffère (13 à 15 selon le canal).
+
+**Tableau affiché** : un participant par ligne (nom, code de la
+catégorie), avec pour chacun des 5 canaux le nombre de tests pris en
+compte et la note moyenne sur 20 de ce canal, puis une **note consolidée**
+pour l'ensemble de ses tests (tous canaux confondus) — présentée à la
+fois en note brute (ramenée sur l'échelle 0-32) et sur 20, cette dernière
+étant la référence qui servira au classement par catégorie dans la
+prochaine étape (« Présentation des résultats »).
+
+Cliquer sur le nom d'un participant ouvre une popup listant tous ses
+tests pris en compte (numéro de test, canal, note brute et note sur 20),
+avec défilement (jusqu'à 200 tests pour un même participant).
+
+> **Point d'attention** : le mode de calcul de la note consolidée
+> (tous canaux confondus) n'était pas précisé dans le détail — j'ai retenu
+> la moyenne simple des notes sur 20 de tous les tests du participant
+> (chaque test pesant le même poids, quel que soit son canal). Si vous
+> souhaitez plutôt pondérer différemment les canaux entre eux, dites-le-moi
+> et j'ajuste le calcul.
+
+Aucune migration de base de données n'est nécessaire pour cette étape : le
+calcul se fait à la volée à partir des données déjà en base
+(`test_result.raw_data`), rien n'est stocké de nouveau.
+
 ## Structure du projet
 
 ```
@@ -355,9 +395,10 @@ vcsoy_web/
 │   ├── categories/routes.py      # Configuration catégorie
 │   ├── participants/routes.py    # Configuration Participant
 │   ├── results/
-│   │   ├── routes.py              # Chargement de fichier + Listes des tests + recherche
+│   │   ├── routes.py              # Chargement de fichier + Listes des tests + recherche + Compilation
 │   │   ├── validation.py          # Règles de contrôle du fichier Excel
-│   │   └── presentation.py        # Extraction Code N / observation / autres données
+│   │   ├── presentation.py        # Extraction Code N / observation / autres données
+│   │   └── scoring.py             # Calcul des notes (Compilation des résultats)
 │   ├── templates/                # gabarits HTML (Jinja2)
 │   └── static/
 │       ├── css/style.css
@@ -389,10 +430,8 @@ de tester avec les **vraies** bibliothèques en conditions réelles.
 
 ## Prochaines étapes
 
-Compilation des résultats (calcul du score par participant à partir des
-données maintenant en base), détermination des gagnants par catégorie,
-présentation des résultats, liste des lauréats — au fur et à mesure de vos
-indications.
+Détermination des gagnants par catégorie, présentation des résultats,
+liste des lauréats — au fur et à mesure de vos indications.
 
 Aucune migration de base de données n'est nécessaire pour cette étape
 (aucune nouvelle table, aucune nouvelle colonne sur une table existante).

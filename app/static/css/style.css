@@ -763,3 +763,72 @@ a { text-decoration: none; color: inherit; }
 .edit-invoice-form .form-section {
   text-align: left;
 }
+
+/* ---------- Compilation des résultats ---------- */
+
+.compilation-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.compilation-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.compilation-table th, .compilation-table td {
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  text-align: center;
+}
+
+.compilation-table thead th {
+  background: var(--sidebar-bg);
+  font-weight: 700;
+}
+
+.compilation-table tbody td:first-child {
+  text-align: left;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--red);
+  font-weight: 600;
+  font-size: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.link-button:hover { color: var(--red-dark); }
+
+.app-dialog-wide {
+  max-width: 640px;
+}
+
+.participant-tests-list {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.participant-tests-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+
+.participant-tests-table th, .participant-tests-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.participant-tests-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+}

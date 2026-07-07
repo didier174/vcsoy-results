@@ -1,0 +1,66 @@
+{% extends "app_shell.html" %}
+{% block content %}
+<div class="page-block compilation-page">
+  <h1 class="page-title">Compilation des résultats</h1>
+  <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
+
+  {% if not rows %}
+    <div class="upload-card">
+      <p class="muted">Aucun participant pour cette édition. Utilisez « Configuration Participant » pour en créer.</p>
+    </div>
+  {% else %}
+    <div class="compilation-table-wrap">
+      <table class="compilation-table">
+        <thead>
+          <tr>
+            <th rowspan="2">Participant</th>
+            <th rowspan="2">Cat</th>
+            {% for channel in channel_order %}
+              <th colspan="2">{{ channel_labels[channel] }}</th>
+            {% endfor %}
+            <th rowspan="2">Note Brute</th>
+            <th rowspan="2">Note sur 20</th>
+          </tr>
+          <tr>
+            {% for channel in channel_order %}
+              <th>nb Test</th>
+              <th>note</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <script type="application/json" id="participant-tests-{{ row.participant_id }}">{{ row.tests|tojson }}</script>
+            <tr>
+              <td>
+                <button type="button" class="link-button" data-participant-name="{{ row.participant_name }}"
+                        onclick="showParticipantTests({{ row.participant_id }}, this)">
+                  {{ row.participant_name }}
+                </button>
+              </td>
+              <td>{{ row.participant_code }}</td>
+              {% for channel in channel_order %}
+                <td>{{ row.channels[channel].nb_test }}</td>
+                <td>{{ '%.2f'|format(row.channels[channel].note_20) if row.channels[channel].note_20 is not none else '—' }}</td>
+              {% endfor %}
+              <td>{{ '%.2f'|format(row.note_brute) if row.note_brute is not none else '—' }}</td>
+              <td>{{ '%.2f'|format(row.note_20) if row.note_20 is not none else '—' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</div>
+
+<!-- Popup : liste des tests d'un participant -->
+<dialog id="participant-tests-popup" class="app-dialog app-dialog-wide">
+  <h3 id="participant-tests-title">Tests</h3>
+  <div id="participant-tests-content" class="participant-tests-list"></div>
+  <div class="dialog-actions">
+    <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Fermer</button>
+  </div>
+</dialog>
+
+<script src="{{ url_for('static', filename='js/compilation.js') }}"></script>
+{% endblock %}
