@@ -18,8 +18,9 @@ from flask import Blueprint, render_template, request, redirect, url_for
 from flask_login import login_required, current_user
 
 from app.extensions import db
-from app.models import Category, Participant, ActionLog
+from app.models import Category, Participant, TestResult, ActionLog
 from app.editions import get_current_edition_id, get_edition
+from app.access_control import user_is_admin
 from app.menu import MENU_ITEMS
 
 participants_bp = Blueprint("participants", __name__, url_prefix="/participants")
@@ -41,12 +42,12 @@ def _current_categories():
     return Category.query.filter_by(edition_id=get_current_edition_id()).order_by(Category.display_name).all()
 
 
-def _render_list(error=None):
+def _render_list(error=None, confirm_delete=None):
     edition_id = get_current_edition_id()
     participants = Participant.query.filter_by(edition_id=edition_id).order_by(Participant.id).all()
     return render_template(
         "participants/list.html",
-        edition=get_edition(edition_id), participants=participants, error=error,
+        edition=get_edition(edition_id), participants=participants, error=error, confirm_delete=confirm_delete,
         active_item="Configuration Participant", menu_items=MENU_ITEMS,
     )
 
@@ -95,12 +96,39 @@ def delete_selected():
     to_delete = Participant.query.filter(
         Participant.edition_id == edition_id, Participant.id.in_(selected_ids)
     ).all()
+    if not to_delete:
+        return _render_list(error="Veuillez cocher au moins un participant à supprimer.")
+
+    ids = [p.id for p in to_delete]
+    nb_tests = TestResult.query.filter(TestResult.participant_id.in_(ids)).count()
+
+    if nb_tests:
+        if not user_is_admin(current_user):
+            return _render_list(error=(
+                "Impossible de supprimer : "
+                + ", ".join(p.participant_name for p in to_delete)
+                + f" a {nb_tests} test(s) chargé(s). "
+                "Seul un administrateur peut supprimer un participant avec ses tests."
+            ))
+
+        if request.form.get("confirm_delete") != "1":
+            return _render_list(confirm_delete={
+                "ids": ids,
+                "message": (
+                    ", ".join(p.participant_name for p in to_delete)
+                    + f" : {nb_tests} test(s) seront supprimés définitivement en même temps "
+                    "que le participant."
+                ),
+            })
+
+        TestResult.query.filter(TestResult.participant_id.in_(ids)).delete(synchronize_session=False)
+
     count = len(to_delete)
     for p in to_delete:
         db.session.delete(p)
     db.session.commit()
 
-    _log("Suppression participant(s)", details=f"{count} participant(s) (édition {edition_id})")
+    _log("Suppression participant(s)", details=f"{count} participant(s), {nb_tests} test(s) (édition {edition_id})")
     return redirect(url_for("participants.list_participants"))
 
 

@@ -534,6 +534,32 @@ callback Google).
 > - Seules 2 éditions sont définies (`editions.py`) ; il en faudra
 >   ajouter jusqu'à 5.
 
+## Étape 10 bis — Correctif : suppression d'une catégorie/participant avec des tests
+
+Supprimer une catégorie ou un participant ayant des tests chargés (ou une
+catégorie ayant encore des participants) provoquait une erreur interne
+(« Internal error ») et n'effectuait aucune suppression — les données
+liées empêchaient la suppression au niveau de la base sans qu'un message
+clair ne soit affiché.
+
+Comportement corrigé :
+- **Sans données liées** : suppression immédiate, comme avant.
+- **Avec des tests (et/ou, pour une catégorie, des participants), pour un
+  collaborateur standard** : suppression refusée avec un message clair
+  indiquant combien de tests/participants sont concernés — rien n'est
+  supprimé.
+- **Avec des tests, pour un administrateur** : une confirmation explicite
+  est demandée (encadré rouge indiquant précisément ce qui sera supprimé),
+  avant de supprimer définitivement la catégorie/le participant **et**
+  tous ses tests (et, pour une catégorie, ses participants).
+
+Listes des tests, Compilation des résultats, Liste des résultats et Liste
+des lauréats se recalculent à la volée à partir de la base à chaque
+chargement de page : aucune action supplémentaire n'est nécessaire après
+une suppression pour qu'ils reflètent la nouvelle situation.
+
+Aucune migration de base de données n'est nécessaire pour ce correctif.
+
 ## Structure du projet
 
 ```

@@ -19,8 +19,9 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from flask_login import login_required, current_user
 
 from app.extensions import db
-from app.models import Category, ActionLog
+from app.models import Category, Participant, TestResult, ActionLog
 from app.editions import get_current_edition_id, get_edition
+from app.access_control import user_is_admin
 from app.menu import MENU_ITEMS
 
 categories_bp = Blueprint("categories", __name__, url_prefix="/categories")
@@ -85,7 +86,7 @@ def _build_rows(categories, pending_values=None):
     return rows
 
 
-def _render(pending_values=None, error=None):
+def _render(pending_values=None, error=None, confirm_delete=None):
     edition_id = get_current_edition_id()
     categories = Category.query.filter_by(edition_id=edition_id).order_by(Category.id).all()
     rows = _build_rows(categories, pending_values=pending_values)
@@ -93,6 +94,7 @@ def _render(pending_values=None, error=None):
     return render_template(
         "categories/list.html",
         edition=get_edition(edition_id), rows=rows, any_editing=any_editing, error=error,
+        confirm_delete=confirm_delete,
         active_item="Configuration catégorie", menu_items=MENU_ITEMS,
     )
 
@@ -131,12 +133,44 @@ def delete_rows():
 
     edition_id = get_current_edition_id()
     to_delete = Category.query.filter(Category.edition_id == edition_id, Category.id.in_(selected_ids)).all()
+    if not to_delete:
+        return _render(error="Veuillez cocher au moins une ligne à supprimer.")
+
+    ids = [cat.id for cat in to_delete]
+    nb_participants = Participant.query.filter(Participant.category_id.in_(ids)).count()
+    nb_tests = TestResult.query.filter(TestResult.category_id.in_(ids)).count()
+
+    if nb_participants or nb_tests:
+        if not user_is_admin(current_user):
+            return _render(error=(
+                "Impossible de supprimer : "
+                + ", ".join(cat.label() for cat in to_delete)
+                + f" contient {nb_participants} participant(s) et {nb_tests} test(s). "
+                "Seul un administrateur peut supprimer une catégorie avec ses données."
+            ))
+
+        if request.form.get("confirm_delete") != "1":
+            return _render(confirm_delete={
+                "ids": ids,
+                "message": (
+                    ", ".join(cat.label() for cat in to_delete)
+                    + f" : {nb_participants} participant(s) et {nb_tests} test(s) seront "
+                    "supprimés définitivement en même temps que la catégorie."
+                ),
+            })
+
+        TestResult.query.filter(TestResult.category_id.in_(ids)).delete(synchronize_session=False)
+        Participant.query.filter(Participant.category_id.in_(ids)).delete(synchronize_session=False)
+
     count = len(to_delete)
     for cat in to_delete:
         db.session.delete(cat)
     db.session.commit()
 
-    _log("Suppression catégorie(s)", details=f"{count} catégorie(s) (édition {edition_id})")
+    _log(
+        "Suppression catégorie(s)",
+        details=f"{count} catégorie(s), {nb_participants} participant(s), {nb_tests} test(s) (édition {edition_id})",
+    )
     _clear_editing_state()
     return redirect(url_for("categories.list_categories"))
 

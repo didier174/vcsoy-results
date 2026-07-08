@@ -903,3 +903,13 @@ a { text-decoration: none; color: inherit; }
   margin-bottom: 14px;
 }
 .back-link:hover { color: var(--red); }
+
+.confirm-delete-box {
+  border: 1px solid var(--red);
+  background: #FDF2F2;
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  font-size: 13px;
+}
+.confirm-delete-box p { margin: 0 0 10px; }
