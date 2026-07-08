@@ -9,17 +9,20 @@
   {% if confirm_delete %}
     <div class="confirm-delete-box">
       <p><strong>Confirmation requise :</strong> {{ confirm_delete.message }}</p>
-      <form method="post" action="{{ url_for('categories.delete_rows') }}" class="inline-form">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        {% for id in confirm_delete.ids %}
-          <input type="hidden" name="selected_ids" value="{{ id }}">
-        {% endfor %}
-        <input type="hidden" name="confirm_delete" value="1">
-        <button type="submit" class="btn btn-primary"
-                onclick="return confirm('Confirmez-vous la suppression définitive de ces données ? Cette action est irréversible.');">
-          Confirmer la suppression définitive
-        </button>
-      </form>
+      <div class="confirm-delete-actions">
+        <a href="{{ url_for('categories.list_categories') }}" class="btn btn-primary">Annuler</a>
+        <form method="post" action="{{ url_for('categories.delete_rows') }}" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% for id in confirm_delete.ids %}
+            <input type="hidden" name="selected_ids" value="{{ id }}">
+          {% endfor %}
+          <input type="hidden" name="confirm_delete" value="1">
+          <button type="submit" class="btn btn-secondary"
+                  onclick="return confirm('Confirmez-vous la suppression définitive de ces données ? Cette action est irréversible.');">
+            Confirmer la suppression définitive
+          </button>
+        </form>
+      </div>
     </div>
   {% endif %}
 

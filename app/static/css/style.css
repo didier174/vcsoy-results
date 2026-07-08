@@ -913,3 +913,8 @@ a { text-decoration: none; color: inherit; }
   font-size: 13px;
 }
 .confirm-delete-box p { margin: 0 0 10px; }
+
+.confirm-delete-actions {
+  display: flex;
+  gap: 10px;
+}
