@@ -11,6 +11,7 @@
   {% endif %}
 
   <form method="post" class="participant-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <fieldset class="form-section">
       <legend>Informations générales</legend>
 

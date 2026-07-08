@@ -15,6 +15,7 @@
   </script>
 
   <form method="post" class="participant-form" id="invoice-create-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <fieldset class="form-section">
       <legend>Informations générales</legend>
 

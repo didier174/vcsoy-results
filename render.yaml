@@ -18,8 +18,12 @@ services:
         sync: false
       - key: ALLOWED_EMAILS
         sync: false
+      - key: ADMIN_EMAILS
+        sync: false
       - key: ALLOW_DEV_LOGIN
         value: "0"
+      - key: SESSION_COOKIE_SECURE
+        value: "1"
 
 databases:
   - name: vcsoy-results-db

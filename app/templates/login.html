@@ -27,6 +27,7 @@
       <div class="dev-login">
         {% if google_enabled %}<p class="or-sep">ou (mode développement)</p>{% endif %}
         <form method="post" class="dev-login-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="email" name="email" placeholder="votre.email@exemple.com" required>
           <button type="submit" class="btn btn-primary">Se connecter</button>
         </form>

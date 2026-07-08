@@ -16,7 +16,7 @@
 
   <div class="page-header-row">
     <h2 class="detail-section-title" style="margin: 0;">Fichiers déjà chargés</h2>
-    {% if uploads %}
+    {% if uploads and is_admin %}
       <button type="button" class="btn btn-secondary" onclick="document.getElementById('cancel-upload-popup').showModal()">
         Annuler un fichier
       </button>
@@ -54,13 +54,14 @@
     </p>
 
     <form method="post" action="{{ url_for('results.upload_file') }}" enctype="multipart/form-data" class="upload-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="file" name="result_file" accept=".xlsx" required>
       <button type="submit" class="btn btn-primary">Charger un fichier</button>
     </form>
   </div>
 </div>
 
-{% if uploads %}
+{% if uploads and is_admin %}
   <dialog id="cancel-upload-popup" class="app-dialog">
     <h3>Annuler un fichier</h3>
     <p class="dialog-field">
@@ -69,6 +70,7 @@
       opération est <strong>irréversible</strong>.
     </p>
     <form method="post" action="{{ url_for('results.cancel_upload') }}" id="cancel-upload-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="dialog-input-label">
         Fichier à annuler
         <select name="filename" required>

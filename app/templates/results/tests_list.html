@@ -1,11 +1,15 @@
 {% extends "app_shell.html" %}
 {% block content %}
 <div class="page-block tests-page">
+  <a href="{{ url_for('results.list_tests') }}" class="back-link">← Retour à la liste des tests</a>
   <div class="page-header-row">
-    <h1 class="page-title">Liste des tests</h1>
-    <span class="tests-total-badge">{{ total_tests }} test(s) au total</span>
+    <h1 class="page-title">
+      {{ group.participant_name }}
+      {% if group.participant_code %}(code {{ group.participant_code }}){% endif %}
+    </h1>
+    <span class="tests-total-badge">{{ total_tests }} test(s)</span>
   </div>
-  <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
+  <p class="page-subtitle">Édition : {{ edition.short_label }} — Catégorie : {{ group.category_label }}</p>
 
   <div class="actions actions-top">
     <button type="button" class="btn btn-primary" onclick="document.getElementById('search-popup').showModal()">
@@ -13,41 +17,34 @@
     </button>
   </div>
 
-  {% if not groups %}
+  {% if not group.tests %}
     <div class="upload-card">
-      <p class="muted">Aucun test chargé pour cette édition. Utilisez « Chargement fichier résultat » pour en importer.</p>
+      <p class="muted">Aucun test chargé pour ce participant.</p>
     </div>
   {% endif %}
 
-  {% for group in groups %}
-    <section class="participant-group">
-      <h2 class="participant-group-title">
-        Catégorie : {{ group.category_label }} — Participant : {{ group.participant_name }}
-        {% if group.participant_code %}(code {{ group.participant_code }}){% endif %}
-      </h2>
-
-      {% for test in group.tests %}
-        <script type="application/json" id="test-data-{{ test.id }}">{{ test|tojson }}</script>
-        <div class="test-block">
-          <div class="test-meta">
-            <span class="test-date">{{ test.date or '—' }}</span>
-            <span class="test-channel-badge">{{ test.channel_label }}</span>
-            <span class="test-id-tag">Test {{ test.test_id }}</span>
-          </div>
-          <div class="test-codes">
-            {% for code in test.codes %}
-              <button type="button" class="code-chip" onclick="showCodePopup({{ test.id }}, {{ code.number }})">
-                Code {{ code.number }} : {{ code.value if code.value is not none and code.value != '' else '—' }}
-              </button>
-            {% endfor %}
-          </div>
-          <button type="button" class="btn btn-secondary btn-other-data" onclick="showOtherDataPopup({{ test.id }})">
-            Autres données
-          </button>
+  <section class="participant-group">
+    {% for test in group.tests %}
+      <script type="application/json" id="test-data-{{ test.id }}">{{ test|tojson }}</script>
+      <div class="test-block">
+        <div class="test-meta">
+          <span class="test-date">{{ test.date or '—' }}</span>
+          <span class="test-channel-badge">{{ test.channel_label }}</span>
+          <span class="test-id-tag">Test {{ test.test_id }}</span>
         </div>
-      {% endfor %}
-    </section>
-  {% endfor %}
+        <div class="test-codes">
+          {% for code in test.codes %}
+            <button type="button" class="code-chip" onclick="showCodePopup({{ test.id }}, {{ code.number }})">
+              Code {{ code.number }} : {{ code.value if code.value is not none and code.value != '' else '—' }}
+            </button>
+          {% endfor %}
+        </div>
+        <button type="button" class="btn btn-secondary btn-other-data" onclick="showOtherDataPopup({{ test.id }})">
+          Autres données
+        </button>
+      </div>
+    {% endfor %}
+  </section>
 </div>
 
 <!-- Popup : valeur + observation d'un Code N -->

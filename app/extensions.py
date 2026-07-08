@@ -7,7 +7,9 @@ attachée) puis initialisées dans create_app() — pattern classique pour
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from authlib.integrations.flask_client import OAuth
+from flask_wtf import CSRFProtect
 
 db = SQLAlchemy()
 login_manager = LoginManager()
 oauth = OAuth()
+csrf = CSRFProtect()

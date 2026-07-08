@@ -17,7 +17,9 @@
 
     <nav class="menu">
       {% for item in menu_items %}
-        {% if item == "Configuration catégorie" %}
+        {% if item == "Administration" and not is_admin %}
+          {# item masqué : réservé aux administrateurs #}
+        {% elif item == "Configuration catégorie" %}
           <a href="{{ url_for('categories.list_categories') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
         {% elif item == "Configuration Participant" %}
           <a href="{{ url_for('participants.list_participants') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>

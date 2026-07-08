@@ -3,19 +3,30 @@ Fabrique de l'application Flask (« application factory »).
 """
 
 from flask import Flask
+from flask_login import current_user
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.config import Config
-from app.extensions import db, login_manager, oauth
+from app.extensions import db, login_manager, oauth, csrf
 
 
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    # Render (comme la plupart des PaaS) place l'application derrière un
+    # proxy inverse qui termine le HTTPS : sans ProxyFix, Flask verrait
+    # chaque requête comme du http:// simple (en-têtes X-Forwarded-* non
+    # pris en compte), ce qui casserait la détection HTTPS nécessaire à
+    # SESSION_COOKIE_SECURE et aux URLs externes (callback OAuth).
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
     db.init_app(app)
 
     login_manager.init_app(app)
     login_manager.login_view = "auth.login"
+
+    csrf.init_app(app)
 
     oauth.init_app(app)
     if app.config.get("GOOGLE_CLIENT_ID"):
@@ -48,6 +59,12 @@ def create_app(config_class=Config):
     @login_manager.user_loader
     def load_user(user_id):
         return User.query.get(int(user_id))
+
+    from app.access_control import user_is_admin
+
+    @app.context_processor
+    def inject_permissions():
+        return {"is_admin": user_is_admin(current_user)}
 
     with app.app_context():
         db.create_all()

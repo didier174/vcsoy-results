@@ -1,0 +1,77 @@
+{% extends "app_shell.html" %}
+{% block content %}
+<div class="page-block tests-page">
+  <div class="page-header-row">
+    <h1 class="page-title">Liste des tests</h1>
+    <span class="tests-total-badge">{{ total_tests }} test(s) au total</span>
+  </div>
+  <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
+
+  <div class="actions actions-top">
+    <button type="button" class="btn btn-primary" onclick="document.getElementById('search-popup').showModal()">
+      Rechercher un test
+    </button>
+  </div>
+
+  {% if not participant_rows %}
+    <div class="upload-card">
+      <p class="muted">Aucun participant pour cette édition. Utilisez « Configuration Participant » pour en créer.</p>
+    </div>
+  {% else %}
+    <div class="compilation-table-wrap">
+      <table class="compilation-table">
+        <thead>
+          <tr>
+            <th>Participant</th>
+            <th>Catégorie</th>
+            <th>Nombre de tests</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in participant_rows %}
+            <tr>
+              <td>
+                <a href="{{ url_for('results.participant_tests', participant_id=row.participant_id) }}">
+                  {{ row.participant_name }}
+                  {% if row.participant_code %}(code {{ row.participant_code }}){% endif %}
+                </a>
+              </td>
+              <td>{{ row.category_label }}</td>
+              <td>{{ row.nb_tests }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</div>
+
+<!-- Popup : recherche d'un test -->
+<dialog id="search-popup" class="app-dialog">
+  <h3>Rechercher un test</h3>
+  <p class="muted">Renseignez au moins un critère.</p>
+  <form method="get" action="{{ url_for('results.search_tests') }}" class="search-form">
+    <label>Numéro de test
+      <input type="text" name="test_id" placeholder="ex. 44011201">
+    </label>
+    <label>Canal
+      <select name="channel">
+        <option value="">— Tous —</option>
+        {% for key, label in channel_options.items() %}
+          <option value="{{ key }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Date
+      <input type="text" name="date" placeholder="ex. 14/07/2026">
+    </label>
+    <label>Nom du participant
+      <input type="text" name="participant_name" placeholder="ex. Boutique ABC">
+    </label>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Annuler</button>
+      <button type="submit" class="btn btn-primary">Rechercher</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}

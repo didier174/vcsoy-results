@@ -22,6 +22,7 @@ from app.extensions import db
 from app.models import Category, Participant, TestResult, ActionLog, FileUpload
 from app.editions import get_current_edition_id, get_edition
 from app.menu import MENU_ITEMS
+from app.access_control import admin_required
 from app.results.validation import validate_workbook, EXPECTED_SHEETS
 from app.results.presentation import build_test_view, CHANNEL_LABELS, CHANNEL_ORDER
 from app.results.scoring import build_compilation_rows, build_category_winners
@@ -109,6 +110,7 @@ def upload_page():
 
 @results_bp.route("/upload/cancel", methods=["POST"])
 @login_required
+@admin_required
 def cancel_upload():
     """
     Supprime définitivement un fichier déjà chargé : son entrée dans
@@ -274,6 +276,13 @@ def winners_page():
 
 
 # ----------------------------------------------------- Liste des tests
+#
+# « Liste des tests » est un index léger (juste le nombre de tests par
+# participant, sans charger leurs données) : à grand volume (ex. 200 tests
+# x 50 participants), embarquer le détail JSON de chaque test d'un coup
+# produirait une page de plusieurs dizaines de Mo. Le détail (test-blocks,
+# popups Code N / autres données) n'est donc chargé que pour UN participant
+# à la fois, sur la page dédiée /tests/participant/<id>.
 
 def _sort_key(test_result):
     category_label = test_result.category.label() if test_result.category else "~"
@@ -286,26 +295,56 @@ def _sort_key(test_result):
 @login_required
 def list_tests():
     edition_id = get_current_edition_id()
-    tests = TestResult.query.filter_by(edition_id=edition_id).all()
-    tests.sort(key=_sort_key)
+    participants = Participant.query.filter_by(edition_id=edition_id).all()
 
-    groups = []
-    current_key = None
-    for t in tests:
-        key = (t.category_id, t.participant_id)
-        if key != current_key:
-            groups.append({
-                "category_label": t.category.label() if t.category else "(catégorie supprimée)",
-                "participant_name": t.participant.participant_name if t.participant else "(participant supprimé)",
-                "participant_code": t.participant.code if t.participant else "",
-                "tests": [],
-            })
-            current_key = key
-        groups[-1]["tests"].append(build_test_view(t))
+    counts = dict(
+        db.session.query(TestResult.participant_id, db.func.count(TestResult.id))
+        .filter_by(edition_id=edition_id)
+        .group_by(TestResult.participant_id)
+        .all()
+    )
+    total_tests = sum(counts.values())
+
+    participant_rows = [
+        {
+            "participant_id": p.id,
+            "category_label": p.category_label(),
+            "participant_name": p.participant_name,
+            "participant_code": p.code,
+            "nb_tests": counts.get(p.id, 0),
+        }
+        for p in participants
+    ]
+    participant_rows.sort(key=lambda r: (r["category_label"].lower(), r["participant_name"].lower()))
 
     edition = get_edition(edition_id)
     return render_template(
-        "results/tests_list.html", edition=edition, groups=groups, total_tests=len(tests),
+        "results/tests_index.html", edition=edition, participant_rows=participant_rows, total_tests=total_tests,
+        channel_options=CHANNEL_LABELS, active_item=ACTIVE_ITEM_TESTS, menu_items=MENU_ITEMS,
+    )
+
+
+@results_bp.route("/tests/participant/<int:participant_id>", methods=["GET"])
+@login_required
+def participant_tests(participant_id):
+    edition_id = get_current_edition_id()
+    participant = Participant.query.get(participant_id)
+    if not participant or participant.edition_id != edition_id:
+        return redirect(url_for("results.list_tests"))
+
+    tests = TestResult.query.filter_by(edition_id=edition_id, participant_id=participant_id).all()
+    tests.sort(key=_sort_key)
+
+    group = {
+        "category_label": participant.category_label(),
+        "participant_name": participant.participant_name,
+        "participant_code": participant.code,
+        "tests": [build_test_view(t) for t in tests],
+    }
+
+    edition = get_edition(edition_id)
+    return render_template(
+        "results/tests_list.html", edition=edition, group=group, total_tests=len(tests),
         channel_options=CHANNEL_LABELS, active_item=ACTIVE_ITEM_TESTS, menu_items=MENU_ITEMS,
     )
 

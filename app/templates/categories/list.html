@@ -7,6 +7,7 @@
   {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
 
   <form method="post" class="table-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="table-card">
       <div class="table-row table-header">
         <div class="col col-check"></div>

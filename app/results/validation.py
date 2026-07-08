@@ -124,8 +124,8 @@ def validate_workbook(wb, categories, participants):
             if h and CODE_COLUMN_REGEX.match(str(h).strip())
         ]
 
-        for r in range(2, ws.max_row + 1):
-            row_values = [ws.cell(row=r, column=c).value for c in range(1, ws.max_column + 1)]
+        for r, row_values in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+            row_values = list(row_values)
             if _row_is_empty(row_values):
                 continue
 

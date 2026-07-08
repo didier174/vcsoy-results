@@ -7,10 +7,22 @@ sur Render.
 """
 
 import os
+from datetime import timedelta
 
 
 class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-me")
+
+    # Durcissement du cookie de session. SESSION_COOKIE_SECURE est
+    # désactivé par défaut (nécessaire pour tester en local en http://),
+    # mais activé explicitement sur Render (voir render.yaml) puisque le
+    # site n'y est servi qu'en https. SameSite=Lax bloque l'envoi du cookie
+    # depuis un site tiers (protection CSRF complémentaire), sans gêner la
+    # navigation normale (liens, redirections OAuth).
+    SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "0") == "1"
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
 
     # En local (aucune variable DATABASE_URL définie) : base SQLite dans un
     # fichier local, zéro configuration nécessaire pour démarrer.

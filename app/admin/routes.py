@@ -18,9 +18,9 @@ from flask import Blueprint, render_template, request, redirect, url_for
 from flask_login import login_required, current_user
 
 from app.extensions import db
-from app.models import AuthorizedUser, ActionLog
+from app.models import AuthorizedUser, ActionLog, User
 from app.editions import get_current_edition_id, get_edition
-from app.access_control import ALLOWED_EMAILS
+from app.access_control import ALLOWED_EMAILS, ADMIN_EMAILS, admin_required
 from app.menu import MENU_ITEMS
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -41,22 +41,26 @@ def _log(action, details=""):
 def _render_users(error=None):
     db_users = AuthorizedUser.query.order_by(AuthorizedUser.email).all()
     env_emails = sorted(ALLOWED_EMAILS)
+    all_users = User.query.order_by(User.email).all()
     edition = get_edition(get_current_edition_id())
     return render_template(
         "admin/users.html",
-        edition=edition, db_users=db_users, env_emails=env_emails, error=error,
+        edition=edition, db_users=db_users, env_emails=env_emails, all_users=all_users,
+        admin_emails=sorted(ADMIN_EMAILS), error=error,
         active_item=ACTIVE_ITEM, menu_items=MENU_ITEMS,
     )
 
 
 @admin_bp.route("/users", methods=["GET"])
 @login_required
+@admin_required
 def list_users():
     return _render_users()
 
 
 @admin_bp.route("/users/add", methods=["POST"])
 @login_required
+@admin_required
 def add_user():
     email = request.form.get("email", "").strip().lower()
 
@@ -78,6 +82,7 @@ def add_user():
 
 @admin_bp.route("/users/delete", methods=["POST"])
 @login_required
+@admin_required
 def delete_users():
     selected_ids = [int(i) for i in request.form.getlist("selected_ids")]
     if not selected_ids:
@@ -94,4 +99,23 @@ def delete_users():
     db.session.commit()
 
     _log("Suppression utilisateur(s) autorisé(s)", details=", ".join(emails))
+    return redirect(url_for("admin.list_users"))
+
+
+@admin_bp.route("/users/toggle-admin", methods=["POST"])
+@login_required
+@admin_required
+def toggle_admin():
+    user = User.query.get(request.form.get("user_id", type=int))
+    if not user:
+        return _render_users(error="Utilisateur introuvable.")
+    if user.id == current_user.id:
+        return _render_users(error="Vous ne pouvez pas modifier vos propres droits depuis cet écran.")
+
+    user.is_admin = not user.is_admin
+    db.session.commit()
+    _log(
+        "Modification droits administrateur",
+        details=f"{user.email} -> {'administrateur' if user.is_admin else 'collaborateur standard'}",
+    )
     return redirect(url_for("admin.list_users"))

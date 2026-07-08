@@ -474,6 +474,66 @@ Aucune migration de base de données n'est nécessaire pour cette étape : le
 calcul se fait à la volée à partir des notes déjà calculées en
 Compilation des résultats.
 
+## Étape 10 — Sécurité et performance
+
+Suite à un audit (sécurité des accès/de la base de données, et simulation
+de charge à 50 participants × 200 tests), cinq correctifs ont été
+apportés.
+
+**1. Chargement fichier résultat 240x plus rapide.** La validation lisait
+chaque cellule une par une ; passée à la méthode native d'openpyxl
+(lecture par ligne), elle prenait **25 secondes pour 10 000 lignes contre
+moins d'une seconde après correctif**, sans aucun changement de
+comportement (mêmes erreurs détectées).
+
+**2. Liste des tests : passage à un index léger.** À 10 000 tests, la
+page embarquait un JSON complet par test et atteignait 44 Mo. Elle
+affiche maintenant un index (participant, catégorie, nombre de tests) ;
+le détail (avec les popups Code N / autres données) n'est chargé que pour
+**un seul participant à la fois**, en cliquant sur son nom.
+
+**3. Rôle Administrateur.** Jusqu'ici, n'importe quel utilisateur autorisé
+avait accès à Administration et pouvait supprimer des données de test.
+Un utilisateur est maintenant administrateur si son adresse figure dans
+la nouvelle variable d'environnement `ADMIN_EMAILS`, ou si un
+administrateur l'a promu depuis l'écran Administration (nouvelle section
+« Administrateurs »). Seuls les administrateurs voient le menu
+Administration et le bouton « Annuler un fichier » — et les routes
+correspondantes sont bloquées (403) pour les autres, même en accès
+direct.
+
+> ⚠️ **Migration de base de données nécessaire** : cette étape ajoute une
+> colonne à la table `user` existante sur Render. Avant de redéployer,
+> connectez-vous à votre base PostgreSQL (Dashboard Render → `vcsoy-results-db`
+> → **Connect**) et exécutez :
+> ```sql
+> ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;
+> ```
+> Définissez aussi `ADMIN_EMAILS` dans les variables d'environnement Render
+> (Settings → Environment), avec au minimum votre propre adresse.
+
+**4. Protection CSRF.** Tous les formulaires qui modifient des données
+(les 13 de l'application) incluent maintenant un jeton anti-CSRF
+(Flask-WTF) : une requête de modification forgée depuis un autre site,
+au nom d'un utilisateur connecté, est désormais rejetée.
+
+**5. Cookies de session durcis.** `SameSite=Lax`, durée de vie limitée à
+8h, et — sur Render uniquement (`SESSION_COOKIE_SECURE=1`, déjà dans
+`render.yaml`) — cookie transmis uniquement en HTTPS. Un `ProxyFix` a été
+ajouté pour que Flask détecte correctement le HTTPS derrière le proxy de
+Render (nécessaire pour que ce réglage fonctionne et pour l'URL de
+callback Google).
+
+> **Points restants, non traités ici** (décisions qui vous appartiennent) :
+> - Le plan gratuit de la base PostgreSQL Render **expire après 90 jours
+>   d'inactivité** — passez sur un plan payant avant cette échéance pour
+>   éviter une perte de données.
+> - Les plages de numéro de test (`validation.py`) totalisent 175
+>   tests/participant au maximum (100+40+15+10+10) ; il faudra les élargir
+>   pour atteindre les 200/participant visés.
+> - Seules 2 éditions sont définies (`editions.py`) ; il en faudra
+>   ajouter jusqu'à 5.
+
 ## Structure du projet
 
 ```

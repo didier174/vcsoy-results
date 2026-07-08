@@ -17,6 +17,9 @@ class User(UserMixin, db.Model):
     name = db.Column(db.String(255))
     google_sub = db.Column(db.String(255), unique=True, nullable=True)
     picture_url = db.Column(db.String(500))
+    # Administrateur : accès à Administration et à la suppression de
+    # données (Annuler un fichier). Voir aussi ADMIN_EMAILS (access_control.py).
+    is_admin = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def get_id(self):

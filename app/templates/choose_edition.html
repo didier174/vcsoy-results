@@ -6,6 +6,7 @@
     <p class="muted">Tout le logiciel travaillera avec les données de l'édition choisie.</p>
 
     <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {% for e in editions %}
         <label class="edition-option">
           <input type="radio" name="edition_id" value="{{ e.id }}" {{ 'checked' if e.id == current_edition_id else '' }}>

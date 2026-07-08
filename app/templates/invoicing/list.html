@@ -12,6 +12,7 @@
     </div>
   {% else %}
     <form method="post" class="table-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="table-card">
         <div class="table-row table-header">
           <div class="col col-check"></div>
@@ -58,6 +59,7 @@
   <p class="muted">Vérifiez et corrigez les informations ci-dessous si besoin.</p>
 
   <form method="post" id="edit-invoice-form" class="participant-form edit-invoice-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <fieldset class="form-section">
       <legend>Informations générales</legend>
 
