@@ -560,6 +560,25 @@ une suppression pour qu'ils reflètent la nouvelle situation.
 
 Aucune migration de base de données n'est nécessaire pour ce correctif.
 
+## Étape 11 — Éditions 2029/2030 et chargement d'une édition
+
+**Nouveaux logos et éditions.** Ajout des logos ESCDA 2029 et 2030
+(français et anglais, fond transparent) dans `app/static/img/`, et des
+éditions correspondantes dans `editions.py` — l'outil gère maintenant 4
+éditions (2027 à 2030). Les logos sont aussi reconnus par la Facturation
+(`app/invoicing/generator.py`).
+
+**Administration : « Charger une édition ».** Nouveau bouton qui copie
+les **catégories et les participants** (jamais les tests) d'une édition
+source vers une édition cible, pratique pour démarrer une nouvelle
+édition sans tout ressaisir. L'opération est **sans risque à rejouer** :
+une catégorie ou un participant déjà présent dans l'édition cible (même
+code) n'est jamais dupliqué — seuls les éléments manquants sont copiés,
+et le message de confirmation indique combien ont été ajoutés / déjà
+présents.
+
+Aucune migration de base de données n'est nécessaire pour cette étape.
+
 ## Structure du projet
 
 ```

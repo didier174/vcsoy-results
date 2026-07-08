@@ -55,6 +55,10 @@ LOGO_FILES = {
     ("2027", "en"): "logo_2027_en.png",
     ("2028", "fr"): "logo_2028_fr.png",
     ("2028", "en"): "logo_2028_en.png",  # à fournir ; repli automatique sinon
+    ("2029", "fr"): "logo_2029_fr.png",
+    ("2029", "en"): "logo_2029_en.png",
+    ("2030", "fr"): "logo_2030_fr.png",
+    ("2030", "en"): "logo_2030_en.png",
 }
 
 

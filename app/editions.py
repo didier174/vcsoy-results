@@ -24,6 +24,18 @@ EDITIONS = [
         "full_label": "2ème Édition — ESCDA 2028",
         "logo_file": "logo_2028_fr.png",
     },
+    {
+        "id": "2029",
+        "short_label": "ESCDA 2029",
+        "full_label": "3ème Édition — ESCDA 2029",
+        "logo_file": "logo_2029_fr.png",
+    },
+    {
+        "id": "2030",
+        "short_label": "ESCDA 2030",
+        "full_label": "4ème Édition — ESCDA 2030",
+        "logo_file": "logo_2030_fr.png",
+    },
 ]
 
 _BY_ID = {e["id"]: e for e in EDITIONS}

@@ -6,6 +6,16 @@
 
   {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
 
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-list">
+        {% for category, message in messages %}
+          <p class="flash {{ 'flash-error' if category == 'error' else 'flash-success' }}">{{ message }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
   {% if env_emails %}
     <div class="upload-card">
       <p class="muted">
@@ -90,6 +100,19 @@
       </div>
     {% endfor %}
   </div>
+
+  <h2 class="detail-section-title">Éditions</h2>
+  <p class="muted">
+    Copie les catégories et les participants (jamais les tests) d'une
+    édition vers une autre — pratique pour démarrer une nouvelle édition
+    sans tout ressaisir. Une catégorie ou un participant déjà présent dans
+    l'édition cible (même code) n'est jamais dupliqué.
+  </p>
+  <div class="actions">
+    <button type="button" class="btn btn-secondary" onclick="document.getElementById('load-edition-popup').showModal()">
+      Charger une édition
+    </button>
+  </div>
 </div>
 
 <dialog id="add-user-popup" class="app-dialog">
@@ -103,6 +126,38 @@
     <div class="dialog-actions">
       <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Annuler</button>
       <button type="submit" class="btn btn-primary">Ajouter</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="load-edition-popup" class="app-dialog">
+  <h3>Charger une édition</h3>
+  <p class="muted">
+    Les catégories et les participants de l'édition source sont copiés
+    vers l'édition cible. Les tests ne sont jamais copiés.
+  </p>
+  <form method="post" action="{{ url_for('admin.load_edition') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="dialog-input-label">Édition source
+      <select name="source_edition" required>
+        {% for e in editions %}
+          <option value="{{ e.id }}">{{ e.short_label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="dialog-input-label">Édition cible
+      <select name="target_edition" required>
+        {% for e in editions %}
+          <option value="{{ e.id }}" {{ 'selected' if loop.index0 == 1 else '' }}>{{ e.short_label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Annuler</button>
+      <button type="submit" class="btn btn-primary"
+              onclick="return confirm('Copier les catégories et participants de l\'édition source vers l\'édition cible ?');">
+        Charger
+      </button>
     </div>
   </form>
 </dialog>
