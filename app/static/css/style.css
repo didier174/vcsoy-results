@@ -1,6 +1,7 @@
 :root {
   --red: #E5241D;
   --red-dark: #c81e18;
+  --navy: #14213D;
   --text: #1A1A1A;
   --muted: #6B6B6B;
   --bg: #FFFFFF;
@@ -23,8 +24,42 @@ a { text-decoration: none; color: inherit; }
 
 /* ---------- Écran de connexion ---------- */
 
+.login-hero {
+  width: 100%;
+  height: 42vh;
+  min-height: 280px;
+  max-height: 520px;
+  overflow: hidden;
+}
+
+.login-hero-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.login-tagline {
+  text-align: center;
+  padding: 28px 20px 4px;
+}
+
+.login-tagline-en {
+  color: var(--red);
+  font-weight: 800;
+  font-size: 32px;
+  line-height: 1.15;
+  margin: 0 0 8px;
+}
+
+.login-tagline-fr {
+  color: var(--navy);
+  font-weight: 700;
+  font-size: 16px;
+  margin: 0;
+}
+
 .login-screen {
-  min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;

@@ -579,6 +579,20 @@ présents.
 
 Aucune migration de base de données n'est nécessaire pour cette étape.
 
+## Étape 12 — Nouvel écran de connexion
+
+La page de connexion démarre maintenant par une photo (célébration, trophée)
+occupant une bonne partie du haut de la fenêtre, suivie de « Voted Customer
+Service of The Year » (gros, gras, rouge) et « Outil de gestion des
+résultats » (plus petit, gras, bleu marine). Le reste de l'écran (logos,
+nom du projet VCSOY RESULTS, connexion Google/mode développement) est
+inchangé, simplement repositionné en dessous.
+
+Photo fournie convertie en JPEG optimisé (259 Ko au lieu de 2,3 Mo en PNG
+d'origine) pour ne pas alourdir le chargement de la page.
+
+Aucune migration de base de données n'est nécessaire pour cette étape.
+
 ## Structure du projet
 
 ```
