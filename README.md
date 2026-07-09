@@ -593,6 +593,18 @@ d'origine) pour ne pas alourdir le chargement de la page.
 
 Aucune migration de base de données n'est nécessaire pour cette étape.
 
+## Étape 12 bis — Écran de connexion simplifié
+
+« Outil de gestion des résultats » est maintenant plus gros (24px). Les
+deux anciens logos ESCDA 2027, le titre « VCSOY RESULTS » et le sous-titre
+« Outil de traitement des résultats — ESCDA Canada » ont été retirés de
+l'écran de connexion, remplacés par le logo générique « Élu Service à la
+Clientèle de l'Année » (sans année). La photo en haut de page occupe
+également un peu plus de place (50vh au lieu de 42vh). Le reste de l'écran
+(connexion Google/mode développement) est inchangé.
+
+Aucune migration de base de données n'est nécessaire pour cette étape.
+
 ## Structure du projet
 
 ```

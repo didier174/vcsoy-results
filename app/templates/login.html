@@ -9,12 +9,7 @@
 </div>
 <div class="login-screen">
   <div class="login-card">
-    <div class="logos">
-      <img src="{{ url_for('static', filename='img/logo_2027_en.png') }}" alt="ESCDA 2027">
-      <img src="{{ url_for('static', filename='img/logo_2027_fr.png') }}" alt="ESCDA 2027">
-    </div>
-    <h1>VCSOY RESULTS</h1>
-    <p class="subtitle">Outil de traitement des résultats — ESCDA Canada</p>
+    <img src="{{ url_for('static', filename='img/logo_annee_fr.png') }}" alt="Élu Service à la Clientèle de l'Année" class="login-logo">
 
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
