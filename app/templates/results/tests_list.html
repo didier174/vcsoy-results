@@ -42,6 +42,11 @@
         <button type="button" class="btn btn-secondary btn-other-data" onclick="showOtherDataPopup({{ test.id }})">
           Autres données
         </button>
+        {% if test.record_id %}
+          <a href="{{ url_for('records.download_record', record_id=test.record_id) }}" class="btn btn-secondary btn-other-data" target="_blank" rel="noopener">
+            Ouvrir le record
+          </a>
+        {% endif %}
       </div>
     {% endfor %}
   </section>

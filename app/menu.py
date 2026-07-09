@@ -8,6 +8,7 @@ MENU_ITEMS = [
     "Configuration catégorie",
     "Configuration Participant",
     "Chargement fichier résultat",
+    "Chargement des records",
     "Liste des tests",
     "Compilation des résultats",
     "Liste des résultats",

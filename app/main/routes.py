@@ -46,6 +46,8 @@ def module(item_name):
         return redirect(url_for("participants.list_participants"))
     if item_name == "Chargement fichier résultat":
         return redirect(url_for("results.upload_page"))
+    if item_name == "Chargement des records":
+        return redirect(url_for("records.upload_page"))
     if item_name == "Compilation des résultats":
         return redirect(url_for("results.compilation_results"))
     if item_name in ("Liste des tests", "Présentation de la liste de test"):

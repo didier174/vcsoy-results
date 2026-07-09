@@ -106,4 +106,5 @@ def build_test_view(test_result):
         "participant_code": test_result.participant.code if test_result.participant else "",
         "codes": codes,
         "other_fields": other_fields,
+        "record_id": test_result.record.id if test_result.record else None,
     }

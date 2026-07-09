@@ -1,0 +1,69 @@
+{% extends "app_shell.html" %}
+{% block content %}
+<div class="page-block">
+  <h1 class="page-title">Chargement des records</h1>
+  <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-list">
+        {% for category, message in messages %}
+          <p class="flash {{ 'flash-error' if category == 'error' else 'flash-success' }}">{{ message }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <h2 class="detail-section-title">Records déjà chargés</h2>
+  {% if not records %}
+    <div class="upload-card">
+      <p class="muted">Aucun record chargé pour cette édition pour le moment.</p>
+    </div>
+  {% else %}
+    <div class="compilation-table-wrap">
+      <table class="compilation-table">
+        <thead>
+          <tr>
+            <th>Test</th>
+            <th>Canal</th>
+            <th>Fichier</th>
+            <th>Chargé le</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in records %}
+            <tr>
+              <td>{{ r.test_result.test_id }}</td>
+              <td>{{ channel_labels.get(r.test_result.channel, r.test_result.channel) }}</td>
+              <td>{{ r.filename }}</td>
+              <td>{{ r.uploaded_at.strftime('%d/%m/%Y %H:%M') if r.uploaded_at else '' }}</td>
+              <td><a href="{{ url_for('records.download_record', record_id=r.id) }}" class="btn btn-secondary btn-compact">Ouvrir</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  <div class="upload-card">
+    <p class="muted">
+      Chargez un lot de fichiers "record" (la preuve de chaque test mystère) :
+      un fichier <strong>audio</strong> pour un test Phone, un <strong>PDF</strong>
+      pour les autres canaux. Chaque fichier doit être nommé exactement
+      <strong>IDMYSTERYTEST-record.ext</strong> (ex. <code>44031450-record.pdf</code>).
+    </p>
+    <p class="muted">
+      Les fichiers sont entièrement vérifiés avant tout enregistrement : s'il y a
+      la moindre erreur sur un seul fichier du lot, rien n'est chargé et la liste
+      complète des erreurs vous est présentée pour correction.
+    </p>
+
+    <form method="post" action="{{ url_for('records.upload_records') }}" enctype="multipart/form-data" class="upload-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="file" name="record_files" multiple required>
+      <button type="submit" class="btn btn-primary">Charger les records</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -43,5 +43,8 @@ class Config:
     # connexion Google validée, pour ne garder qu'une seule porte d'entrée.
     ALLOW_DEV_LOGIN = os.environ.get("ALLOW_DEV_LOGIN", "1") == "1"
 
-    # Limite la taille des fichiers envoyés (chargement de résultats) à 20 Mo.
-    MAX_CONTENT_LENGTH = 20 * 1024 * 1024
+    # Limite la taille totale d'une requête envoyée (chargement de fichiers).
+    # 300 Mo pour permettre le chargement d'un lot de fichiers "records"
+    # (audio notamment) en une seule fois, en plus du fichier Excel de
+    # résultats (largement sous les 20 Mo initiaux).
+    MAX_CONTENT_LENGTH = 300 * 1024 * 1024

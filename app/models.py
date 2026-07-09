@@ -225,3 +225,30 @@ class TestResult(db.Model):
     uploaded_by = db.relationship("User")
 
     CHANNELS = ["phone", "mail", "web", "rs", "chat"]
+
+
+class TestRecord(db.Model):
+    """
+    Le "record" d'un test mystère : la preuve du test (fichier audio pour
+    un test Phone, PDF pour les autres canaux), liée à un TestResult par
+    son ID Mystery Test. Stocké directement en base (comme le reste des
+    données) plutôt que sur le disque du serveur, qui est réinitialisé à
+    chaque déploiement Render.
+
+    Un seul record par test : un rechargement du même ID Mystery Test met
+    à jour le record existant plutôt que d'en créer un second.
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    test_result_id = db.Column(db.Integer, db.ForeignKey("test_result.id"), nullable=False, unique=True)
+
+    filename = db.Column(db.String(255))
+    content_type = db.Column(db.String(100))
+    file_data = db.Column(db.LargeBinary, nullable=False)
+    file_size = db.Column(db.Integer)
+
+    uploaded_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    test_result = db.relationship("TestResult", backref=db.backref("record", uselist=False))
+    uploaded_by = db.relationship("User")

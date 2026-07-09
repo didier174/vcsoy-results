@@ -605,6 +605,47 @@ Clientèle de l'Année » (sans année). La photo en haut de page occupe
 
 Aucune migration de base de données n'est nécessaire pour cette étape.
 
+## Étape 13 — Chargement des records
+
+Nouvel item de menu **« Chargement des records »**, qui permet de charger
+en une fois un **lot de fichiers** (comme pour « Chargement fichier
+résultat ») : un fichier **audio** pour un test Phone, un **PDF** pour les
+autres canaux (Email, Web Navigation, Social Networks, Chat) — le
+"record" étant la preuve/trace de chaque test mystère.
+
+**Format de nom exigé** : chaque fichier doit être nommé exactement
+`IDMYSTERYTEST-record.ext` (ex. `44031450-record.pdf`), où
+`IDMYSTERYTEST` est la même chaîne de 8 chiffres CCPPXXXX utilisée pour
+les résultats. Sont vérifiés avant tout enregistrement : le code
+catégorie (CC), le code participant (PP) dans cette catégorie, que l'ID
+Mystery Test correspond à un test **déjà chargé** dans « Chargement
+fichier résultat » (sinon rejeté), et que l'extension correspond au canal
+du test (audio pour Phone, PDF sinon). Comme pour les résultats, le
+chargement est **tout-ou-rien** : si un seul fichier du lot est invalide,
+rien n'est enregistré et la liste complète des erreurs est affichée.
+
+Un fichier rechargé pour un ID Mystery Test déjà pourvu d'un record **le
+remplace** plutôt que de créer un doublon.
+
+**Stockage** : les records sont stockés directement en base de données
+(nouvelle table `test_record`, colonne binaire), comme le reste des
+données — pas sur le disque du serveur, qui est réinitialisé à chaque
+déploiement Render. La limite de taille des requêtes a été augmentée à
+300 Mo (`MAX_CONTENT_LENGTH`) pour permettre le chargement d'un lot de
+fichiers audio en une seule fois.
+
+Un bouton **« Ouvrir le record »** apparaît sur chaque test qui en a un,
+dans « Liste des tests » (page de détail par participant) et sur la page
+de détail d'un test (recherche).
+
+> **Point d'attention** : le bouton n'a pas été ajouté à la popup de
+> détail des tests d'un participant dans « Compilation des résultats »
+> (uniquement dans « Liste des tests » et la page de détail d'un test).
+> Dites-le-moi si vous le voulez aussi à cet endroit.
+
+Aucune migration de base de données n'est nécessaire : `test_record` est
+une table entièrement nouvelle, créée automatiquement.
+
 ## Structure du projet
 
 ```
@@ -631,6 +672,9 @@ vcsoy_web/
 │   │   ├── validation.py          # Règles de contrôle du fichier Excel
 │   │   ├── presentation.py        # Extraction Code N / observation / autres données
 │   │   └── scoring.py             # Calcul des notes (Compilation, Liste des résultats, Lauréats)
+│   ├── records/
+│   │   ├── routes.py              # Chargement des records + téléchargement
+│   │   └── validation.py          # Règles de contrôle des fichiers record
 │   ├── templates/                # gabarits HTML (Jinja2)
 │   └── static/
 │       ├── css/style.css
