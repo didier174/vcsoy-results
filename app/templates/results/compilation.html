@@ -55,7 +55,8 @@
 
 <!-- Popup : liste des tests d'un participant -->
 <dialog id="participant-tests-popup" class="app-dialog app-dialog-wide"
-        data-test-detail-base="{{ url_for('results.test_detail', test_result_id=0) }}">
+        data-test-detail-base="{{ url_for('results.test_detail', test_result_id=0) }}"
+        data-record-download-base="{{ url_for('records.download_record', record_id=0) }}">
   <h3 id="participant-tests-title">Tests</h3>
   <div id="participant-tests-content" class="participant-tests-list"></div>
   <div class="dialog-actions">

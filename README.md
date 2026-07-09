@@ -635,13 +635,9 @@ déploiement Render. La limite de taille des requêtes a été augmentée à
 fichiers audio en une seule fois.
 
 Un bouton **« Ouvrir le record »** apparaît sur chaque test qui en a un,
-dans « Liste des tests » (page de détail par participant) et sur la page
-de détail d'un test (recherche).
-
-> **Point d'attention** : le bouton n'a pas été ajouté à la popup de
-> détail des tests d'un participant dans « Compilation des résultats »
-> (uniquement dans « Liste des tests » et la page de détail d'un test).
-> Dites-le-moi si vous le voulez aussi à cet endroit.
+dans « Liste des tests » (page de détail par participant), sur la page de
+détail d'un test (recherche), et dans la popup de détail des tests d'un
+participant sur « Compilation des résultats ».
 
 Aucune migration de base de données n'est nécessaire : `test_record` est
 une table entièrement nouvelle, créée automatiquement.

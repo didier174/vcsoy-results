@@ -30,11 +30,12 @@ function showParticipantTests(participantId, buttonEl) {
   } else {
     const popup = document.getElementById("participant-tests-popup");
     const detailBase = popup.dataset.testDetailBase.replace(/0$/, "");
+    const recordUrlFor = (recordId) => popup.dataset.recordDownloadBase.replace("/0/", "/" + recordId + "/");
 
     const table = document.createElement("table");
     table.className = "participant-tests-table";
     table.innerHTML =
-      "<thead><tr><th>Test</th><th>Canal</th><th>Note brute</th><th>Note sur 20</th></tr></thead>";
+      "<thead><tr><th>Test</th><th>Canal</th><th>Note brute</th><th>Note sur 20</th><th></th></tr></thead>";
     const tbody = document.createElement("tbody");
     tests.forEach((t) => {
       const tr = document.createElement("tr");
@@ -42,7 +43,8 @@ function showParticipantTests(participantId, buttonEl) {
         "<td><strong><button type=\"button\" class=\"link-button\">" + t.test_id + "</button></strong></td>" +
         "<td>" + (CHANNEL_LABELS_JS[t.channel] || t.channel) + "</td>" +
         "<td>" + t.note_brute + " / " + t.note_max + "</td>" +
-        "<td>" + t.note_20.toFixed(2) + "</td>";
+        "<td>" + t.note_20.toFixed(2) + "</td>" +
+        "<td>" + (t.record_id ? "<a href=\"" + recordUrlFor(t.record_id) + "\" class=\"btn btn-secondary btn-compact\" target=\"_blank\" rel=\"noopener\">Ouvrir le record</a>" : "") + "</td>";
       tr.querySelector("button").addEventListener("click", () => {
         window.location.href = detailBase + t.id;
       });
