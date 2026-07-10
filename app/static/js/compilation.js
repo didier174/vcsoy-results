@@ -44,10 +44,14 @@ function showParticipantTests(participantId, buttonEl) {
         "<td>" + (CHANNEL_LABELS_JS[t.channel] || t.channel) + "</td>" +
         "<td>" + t.note_brute + " / " + t.note_max + "</td>" +
         "<td>" + t.note_20.toFixed(2) + "</td>" +
-        "<td>" + (t.record_id ? "<a href=\"" + recordUrlFor(t.record_id) + "\" class=\"btn btn-secondary btn-compact\" target=\"_blank\" rel=\"noopener\">Ouvrir le record</a>" : "") + "</td>";
+        "<td>" + (t.record_id ? "<a href=\"" + recordUrlFor(t.record_id) + "\" class=\"btn btn-secondary btn-compact record-link\" target=\"_blank\" rel=\"noopener\">Ouvrir le record</a>" : "") + "</td>";
       tr.querySelector("button").addEventListener("click", () => {
         window.location.href = detailBase + t.id;
       });
+      const recordLink = tr.querySelector(".record-link");
+      if (recordLink) {
+        recordLink.addEventListener("click", (event) => openRecordLink(event, recordLink.href, t.record_is_audio));
+      }
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);

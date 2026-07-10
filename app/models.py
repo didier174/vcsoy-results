@@ -252,3 +252,7 @@ class TestRecord(db.Model):
 
     test_result = db.relationship("TestResult", backref=db.backref("record", uselist=False))
     uploaded_by = db.relationship("User")
+
+    @property
+    def is_audio(self):
+        return bool(self.content_type) and self.content_type.startswith("audio/")

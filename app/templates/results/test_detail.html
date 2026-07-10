@@ -1,7 +1,14 @@
 {% extends "app_shell.html" %}
 {% block content %}
 <div class="page-block test-detail-page">
-  <h1 class="page-title">Détail du test {{ test.test_id }}</h1>
+  <div class="page-header-row">
+    <h1 class="page-title">Détail du test {{ test.test_id }}</h1>
+    {% if test.record_id %}
+      <a href="{{ url_for('records.download_record', record_id=test.record_id) }}" class="btn btn-secondary" target="_blank" rel="noopener" onclick="openRecordLink(event, this.href, {{ 'true' if test.record_is_audio else 'false' }})">
+        Ouvrir le record
+      </a>
+    {% endif %}
+  </div>
   <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
 
   <div class="detail-header-card">
@@ -52,11 +59,6 @@
 
   <div class="actions">
     <a href="{{ url_for('results.list_tests') }}" class="btn btn-primary">Retour à la liste des tests</a>
-    {% if test.record_id %}
-      <a href="{{ url_for('records.download_record', record_id=test.record_id) }}" class="btn btn-secondary" target="_blank" rel="noopener">
-        Ouvrir le record
-      </a>
-    {% endif %}
   </div>
 </div>
 {% endblock %}

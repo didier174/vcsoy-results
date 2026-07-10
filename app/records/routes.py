@@ -14,10 +14,11 @@ fichier du lot est invalide, rien n'est enregistré.
 import io
 import mimetypes
 
-from flask import Blueprint, render_template, request, send_file
+from flask import Blueprint, render_template, request, send_file, redirect, url_for, flash
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
+from app.access_control import admin_required
 from app.extensions import db
 from app.models import Category, Participant, TestResult, TestRecord, ActionLog
 from app.editions import get_current_edition_id, get_edition
@@ -135,6 +136,33 @@ def download_record(record_id):
     return send_file(
         io.BytesIO(record.file_data),
         mimetype=record.content_type or "application/octet-stream",
-        as_attachment=True,
+        as_attachment=False,
         download_name=record.filename,
     )
+
+
+@records_bp.route("/delete", methods=["POST"])
+@login_required
+@admin_required
+def delete_records():
+    edition_id = get_current_edition_id()
+    record_ids = [int(rid) for rid in request.form.getlist("record_ids") if rid.isdigit()]
+
+    if not record_ids:
+        flash("Merci de choisir au moins un record à supprimer.", "error")
+        return redirect(url_for("records.upload_page"))
+
+    records = (
+        TestRecord.query.join(TestResult)
+        .filter(TestRecord.id.in_(record_ids), TestResult.edition_id == edition_id)
+        .all()
+    )
+    deleted = len(records)
+    details = ", ".join(r.filename for r in records)
+    for record in records:
+        db.session.delete(record)
+    db.session.commit()
+
+    _log("Suppression de records", details=f"{deleted} record(s) supprimé(s) (édition {edition_id}) : {details}")
+    flash(f"{deleted} record(s) supprimé(s).", "success")
+    return redirect(url_for("records.upload_page"))

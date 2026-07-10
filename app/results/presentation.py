@@ -107,4 +107,5 @@ def build_test_view(test_result):
         "codes": codes,
         "other_fields": other_fields,
         "record_id": test_result.record.id if test_result.record else None,
+        "record_is_audio": test_result.record.is_audio if test_result.record else False,
     }

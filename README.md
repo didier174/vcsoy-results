@@ -642,6 +642,29 @@ participant sur « Compilation des résultats ».
 Aucune migration de base de données n'est nécessaire : `test_record` est
 une table entièrement nouvelle, créée automatiquement.
 
+## Étape 13 bis — Ouverture des records + gestion de « Chargement des records »
+
+Deux ajustements sur la fonctionnalité des records :
+
+**Ouverture d'un record** : le bouton « Ouvrir le record » ouvre
+maintenant le fichier différemment selon son type. Un **PDF** s'ouvre en
+mode visionneuse dans un nouvel onglet (le fichier est servi en `inline`
+plutôt qu'en pièce jointe forcée). Un fichier **audio** ouvre une popup
+avec un lecteur (`<audio>` en lecture automatique) sans quitter la page.
+Sur la page de détail d'un test (recherche), le bouton est désormais
+positionné en haut, à côté du titre.
+
+**« Chargement des records »** : la page n'affiche plus le tableau complet
+des records chargés, mais un simple **compteur** (« N record(s) chargé(s)
+pour cette édition »). Les administrateurs disposent en plus d'un bouton
+**« Supprimer des records »**, qui ouvre une popup listant tous les
+records avec une case à cocher par fichier ; la suppression exige de
+cocher une case de confirmation et une seconde confirmation JavaScript, et
+supprime définitivement les records sélectionnés de la base — le bouton
+« Ouvrir le record » disparaît alors automatiquement partout où il
+apparaissait pour ces tests (Liste des tests, détail d'un test,
+Compilation des résultats).
+
 ## Structure du projet
 
 ```

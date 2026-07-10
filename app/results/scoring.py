@@ -99,6 +99,7 @@ def build_compilation_rows(participants, tests):
             "test_id": t.test_id,
             "channel": t.channel,
             "record_id": t.record.id if t.record else None,
+            "record_is_audio": t.record.is_audio if t.record else False,
             **score,
         })
 

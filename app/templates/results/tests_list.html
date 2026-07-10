@@ -43,7 +43,7 @@
           Autres données
         </button>
         {% if test.record_id %}
-          <a href="{{ url_for('records.download_record', record_id=test.record_id) }}" class="btn btn-secondary btn-other-data" target="_blank" rel="noopener">
+          <a href="{{ url_for('records.download_record', record_id=test.record_id) }}" class="btn btn-secondary btn-other-data" target="_blank" rel="noopener" onclick="openRecordLink(event, this.href, {{ 'true' if test.record_is_audio else 'false' }})">
             Ouvrir le record
           </a>
         {% endif %}
