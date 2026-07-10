@@ -6,8 +6,8 @@ règles définies dans le cahier des charges :
   CC = code catégorie existant, PP = code participant existant (dans cette
   catégorie), XXXX = numéro de test dans la plage attendue pour le canal
   correspondant à l'onglet.
-- Toutes les colonnes "Code <n>" ne peuvent contenir que 0, 1, 2 ou
-  « Non applicable » (vide autorisé).
+- Toutes les colonnes "Code <n>" ne peuvent contenir que 0, 1, 2,
+  « Non applicable » ou « Non observable » (vide autorisé).
 - Les colonnes "Code <n> obs"/"...Obs" peuvent contenir n'importe quoi
   (aucun contrôle).
 - Id Mystery Tester est obligatoire dès qu'une ligne a un ID Mystery Test.
@@ -39,7 +39,7 @@ CHANNELS = {
 EXPECTED_SHEETS = list(CHANNELS.keys())
 
 CODE_COLUMN_REGEX = re.compile(r"^code\s*\d+$", re.IGNORECASE)
-VALID_CODE_VALUES = {"0", "1", "2", "non applicable"}
+VALID_CODE_VALUES = {"0", "1", "2", "non applicable", "non observable"}
 
 # Nom du champ Participant (case à cocher) correspondant à chaque canal, pour
 # vérifier qu'un test n'est chargé que pour un canal déclaré actif pour ce
@@ -188,7 +188,7 @@ def validate_workbook(wb, categories, participants):
                 if sval not in VALID_CODE_VALUES:
                     row_errors.append((
                         col_idx,
-                        f"Valeur invalide pour « {header} » : {v!r} (attendu 0, 1, 2 ou « Non applicable »).",
+                        f"Valeur invalide pour « {header} » : {v!r} (attendu 0, 1, 2, « Non applicable » ou « Non observable »).",
                     ))
 
             if row_errors:
