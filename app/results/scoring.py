@@ -126,6 +126,8 @@ def build_compilation_rows(participants, tests):
             overall_20 = None
             overall_brute = None
 
+        channel_notes = {c: channels[c]["note_20"] for c in CHANNEL_ORDER if channels[c]["note_20"] is not None}
+
         rows.append({
             "participant_id": participant.id,
             "participant_name": participant.participant_name,
@@ -134,6 +136,7 @@ def build_compilation_rows(participants, tests):
             "channels": channels,
             "note_brute": overall_brute,
             "note_20": overall_20,
+            "consolidated_score": compute_consolidated_score(channel_notes),
             "nb_tests_total": len(participant_tests),
             "tests": sorted(participant_tests, key=lambda t: (t["channel"], t["test_id"])),
         })
@@ -188,15 +191,6 @@ def compute_consolidated_score(channel_notes):
     return round(raw * multiplier, 2)
 
 
-def row_channel_notes(row):
-    """Extrait {canal: note} pour les canaux d'une ligne de build_compilation_rows ayant au moins un test."""
-    return {
-        c: row["channels"][c]["note_20"]
-        for c in CHANNEL_ORDER
-        if row["channels"][c]["note_20"] is not None
-    }
-
-
 def build_category_winners(rows):
     """
     rows : sortie de build_compilation_rows (une ligne par participant).
@@ -207,7 +201,7 @@ def build_category_winners(rows):
     """
     by_category = {}
     for row in rows:
-        score = compute_consolidated_score(row_channel_notes(row))
+        score = row["consolidated_score"]
         if score is None:
             continue
         key = (row["category_code"], row["category_label"])

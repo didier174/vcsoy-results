@@ -18,6 +18,7 @@
             {% for channel in channel_order %}
               <th>{{ channel_labels[channel] }}</th>
             {% endfor %}
+            <th>Note consolidée</th>
           </tr>
         </thead>
         <tbody>
@@ -28,6 +29,7 @@
               {% for channel in channel_order %}
                 <td>{{ '%.2f'|format(row.channels[channel].note_20) if row.channels[channel].note_20 is not none else '—' }}</td>
               {% endfor %}
+              <td>{{ '%.2f'|format(row.consolidated_score) if row.consolidated_score is not none else '—' }}</td>
             </tr>
           {% endfor %}
         </tbody>
