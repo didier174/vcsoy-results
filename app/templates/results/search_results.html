@@ -16,14 +16,17 @@
     <p class="muted">{{ results|length }} test(s) trouvé(s) :</p>
     <div class="table-card">
       <div class="table-row table-header">
-        <div class="col col-search-id">Test</div>
-        <div class="col col-search-cat">Catégorie</div>
-        <div class="col col-search-part">Participant</div>
-        <div class="col col-search-chan">Canal</div>
-        <div class="col col-search-date">Date</div>
+        <div class="col col-search-id"><button type="button" class="table-sort-btn" data-sort-key="test_id">Test</button></div>
+        <div class="col col-search-cat"><button type="button" class="table-sort-btn" data-sort-key="category_label">Catégorie</button></div>
+        <div class="col col-search-part"><button type="button" class="table-sort-btn" data-sort-key="participant_name">Participant</button></div>
+        <div class="col col-search-chan"><button type="button" class="table-sort-btn" data-sort-key="channel_label">Canal</button></div>
+        <div class="col col-search-date"><button type="button" class="table-sort-btn" data-sort-key="date">Date</button></div>
       </div>
       {% for r in results %}
-        <a class="table-row search-result-row" href="{{ url_for('results.test_detail', test_result_id=r.id) }}">
+        <a class="table-row search-result-row" href="{{ url_for('results.test_detail', test_result_id=r.id) }}"
+           data-test_id="{{ r.test_id }}" data-category_label="{{ r.category_label }}"
+           data-participant_name="{{ r.participant_name }}" data-channel_label="{{ r.channel_label }}"
+           data-date="{{ r.date or '' }}">
           <div class="col col-search-id">{{ r.test_id }}</div>
           <div class="col col-search-cat">{{ r.category_label }}</div>
           <div class="col col-search-part">{{ r.participant_name }}</div>
@@ -38,4 +41,6 @@
     <a href="{{ url_for('results.list_tests') }}" class="btn btn-primary">Retour à la liste des tests</a>
   </div>
 </div>
+
+<script src="{{ url_for('static', filename='js/search_results.js') }}"></script>
 {% endblock %}

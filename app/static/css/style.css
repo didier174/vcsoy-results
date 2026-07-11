@@ -837,6 +837,19 @@ a { text-decoration: none; color: inherit; }
 }
 .link-button:hover { color: var(--red-dark); }
 
+.table-sort-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-weight: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.table-sort-btn:hover { text-decoration: underline; }
+
 .app-dialog-wide {
   max-width: 640px;
 }
