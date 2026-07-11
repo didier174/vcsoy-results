@@ -665,6 +665,29 @@ supprime définitivement les records sélectionnés de la base — le bouton
 apparaissait pour ces tests (Liste des tests, détail d'un test,
 Compilation des résultats).
 
+## Étape 14 — Rapport d'études (écran initial)
+
+Nouvel item de menu **« Rapport d'études »**. Cette première étape met en
+place l'écran principal ; les fonctionnalités « Créer » et « Modifier »
+seront définies et développées dans une prochaine étape (les boutons sont
+déjà en place, mais affichent pour l'instant un message d'attente).
+
+L'écran affiche le tableau des rapports d'études existants (case à
+cocher, nom, date de création), avec en dessous les trois boutons
+**« Créer »**, **« Modifier »** et **« Supprimer »** : « Modifier »
+n'est actif que si **exactement un** rapport est coché, « Supprimer »
+dès qu'**au moins un** l'est. La suppression (réservée aux
+administrateurs, comme les autres suppressions définitives de
+l'application) demande une confirmation avant d'effacer les rapports
+sélectionnés.
+
+Au-dessus du tableau, le bouton **« Charger un modèle de rapport »**
+ouvre une popup reprenant le design de « Chargement fichier résultat » :
+un simple champ de sélection de fichier (avec bouton « Choisir un
+fichier ») et un bouton « Charger ». Le modèle est stocké directement en
+base (nouvelle table `report_template`, colonne binaire), comme les
+records de test — pas sur le disque du serveur.
+
 ## Structure du projet
 
 ```
@@ -694,6 +717,8 @@ vcsoy_web/
 │   ├── records/
 │   │   ├── routes.py              # Chargement des records + téléchargement
 │   │   └── validation.py          # Règles de contrôle des fichiers record
+│   ├── reports/
+│   │   └── routes.py              # Rapport d'études : liste, modèle, suppression
 │   ├── templates/                # gabarits HTML (Jinja2)
 │   └── static/
 │       ├── css/style.css

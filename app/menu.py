@@ -13,6 +13,7 @@ MENU_ITEMS = [
     "Compilation des résultats",
     "Liste des résultats",
     "Liste des lauréats",
+    "Rapport d'études",
     "Facturation",
     "Administration",
 ]

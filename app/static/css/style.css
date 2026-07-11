@@ -305,6 +305,8 @@ a { text-decoration: none; color: inherit; }
 .col-cat-display, .col-part-cat { flex: 1 1 30%; }
 .col-cat-code, .col-part-code { flex: 0 0 70px; }
 .col-part-act { flex: 0 0 70px; }
+.col-report-name { flex: 1 1 70%; }
+.col-report-date { flex: 0 0 140px; }
 
 .table-row input[type="text"] {
   width: 100%;

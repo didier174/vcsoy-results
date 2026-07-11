@@ -1,0 +1,82 @@
+{% extends "app_shell.html" %}
+{% block content %}
+<div class="page-block">
+  <h1 class="page-title">Rapport d'études</h1>
+  <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-list">
+        {% for category, message in messages %}
+          <p class="flash {{ 'flash-error' if category == 'error' else 'flash-success' }}">{{ message }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <div class="actions actions-top">
+    <button type="button" class="btn btn-secondary" onclick="document.getElementById('upload-template-popup').showModal()">
+      Charger un modèle de rapport
+    </button>
+  </div>
+
+  <form method="post" id="reports-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="table-card">
+      <div class="table-row table-header">
+        <div class="col col-check"></div>
+        <div class="col col-report-name">Nom du rapport</div>
+        <div class="col col-report-date">Date de création</div>
+      </div>
+
+      {% if not reports %}
+        <div class="table-empty">Aucun rapport d'étude pour cette édition.</div>
+      {% endif %}
+
+      {% for r in reports %}
+        <div class="table-row">
+          <div class="col col-check">
+            <input type="checkbox" name="selected_ids" value="{{ r.id }}" class="report-checkbox">
+          </div>
+          <div class="col col-report-name">{{ r.name }}</div>
+          <div class="col col-report-date">{{ r.created_at.strftime('%d/%m/%Y') if r.created_at else '' }}</div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="actions">
+      <button type="button" class="btn btn-primary"
+              onclick="alert('La fonctionnalité « Créer » sera définie dans une prochaine étape.');">
+        Créer
+      </button>
+      <button type="button" class="btn btn-secondary" id="report-modify-btn" disabled
+              onclick="alert('La fonctionnalité « Modifier » sera définie dans une prochaine étape.');">
+        Modifier
+      </button>
+      <button type="submit" class="btn btn-secondary" id="report-delete-btn" disabled
+              formaction="{{ url_for('reports.delete_reports') }}"
+              onclick="return confirm('Confirmez-vous la suppression définitive du/des rapport(s) sélectionné(s) ? Cette action est irréversible.');">
+        Supprimer
+      </button>
+    </div>
+  </form>
+</div>
+
+<dialog id="upload-template-popup" class="app-dialog">
+  <h3>Charger un modèle de rapport</h3>
+  <p class="muted">
+    Chargez le fichier du modèle de rapport depuis votre ordinateur (bureau
+    ou tout autre dossier local).
+  </p>
+  <form method="post" action="{{ url_for('reports.upload_template') }}" enctype="multipart/form-data" class="upload-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="file" name="template_file" required>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Fermer</button>
+      <button type="submit" class="btn btn-primary">Charger</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="{{ url_for('static', filename='js/reports.js') }}"></script>
+{% endblock %}

@@ -256,3 +256,44 @@ class TestRecord(db.Model):
     @property
     def is_audio(self):
         return bool(self.content_type) and self.content_type.startswith("audio/")
+
+
+class ReportTemplate(db.Model):
+    """
+    Un modèle de rapport chargé pour « Rapport d'études » : le fichier de
+    base à partir duquel un rapport sera créé. Stocké directement en base
+    (comme les records), le disque du serveur étant réinitialisé à chaque
+    déploiement Render.
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    edition_id = db.Column(db.String(20), nullable=False, index=True)
+
+    filename = db.Column(db.String(255))
+    content_type = db.Column(db.String(100))
+    file_data = db.Column(db.LargeBinary, nullable=False)
+    file_size = db.Column(db.Integer)
+
+    uploaded_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    uploaded_by = db.relationship("User")
+
+
+class StudyReport(db.Model):
+    """
+    Un rapport d'études, rattaché à une édition. Étape initiale : seuls le
+    nom et la date de création sont gérés ; le contenu du rapport et les
+    fonctionnalités « Créer »/« Modifier » seront définis dans une
+    prochaine étape.
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    edition_id = db.Column(db.String(20), nullable=False, index=True)
+
+    name = db.Column(db.String(255), nullable=False)
+
+    created_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    created_by = db.relationship("User")
