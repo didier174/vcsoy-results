@@ -93,6 +93,12 @@ a { text-decoration: none; color: inherit; }
 
 .btn-secondary { background: var(--item-hover); color: var(--text); font-weight: 600; }
 
+.btn:disabled {
+  background: var(--border);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
 .btn-google {
   background: white;
   color: var(--text);
@@ -305,8 +311,9 @@ a { text-decoration: none; color: inherit; }
 .col-cat-display, .col-part-cat { flex: 1 1 30%; }
 .col-cat-code, .col-part-code { flex: 0 0 70px; }
 .col-part-act { flex: 0 0 70px; }
-.col-report-name { flex: 1 1 70%; }
+.col-report-name { flex: 1 1 55%; }
 .col-report-date { flex: 0 0 140px; }
+.col-report-dl { flex: 0 0 120px; }
 
 .table-row input[type="text"] {
   width: 100%;

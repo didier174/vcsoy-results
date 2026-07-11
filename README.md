@@ -688,6 +688,48 @@ fichier ») et un bouton « Charger ». Le modèle est stocké directement en
 base (nouvelle table `report_template`, colonne binaire), comme les
 records de test — pas sur le disque du serveur.
 
+## Étape 14 bis — Génération d'un rapport d'études (« Créer »)
+
+Le bouton **« Créer »** ouvre désormais une popup demandant un **modèle**
+(parmi ceux chargés) et un **participant**, avec un bouton « Créer » grisé
+tant que les deux ne sont pas choisis (il devient rouge/actif dès que
+c'est le cas), et un bouton « Annuler » à côté pour fermer sans rien
+faire.
+
+**Balises du modèle** : le modèle (.pptx) doit contenir des balises au
+format `{{ Nom de la balise }}` (n'importe où : titre, zone de texte,
+tableau). À la création, chaque balise est remplacée par la donnée
+correspondante du participant choisi. Balises disponibles actuellement
+(toutes déjà calculées ailleurs dans l'application, voir
+`app/reports/report_data.py`) :
+
+- `{{ Participant }}`, `{{ Code participant }}`, `{{ Catégorie }}`
+- Pour chaque canal (Téléphone, Mail, WEB, RS, Chat) :
+  `{{ Nb tests <canal> }}`, `{{ Note <canal> }}`
+- `{{ Note consolidée }}`
+
+Si le modèle contient une balise **non reconnue**, la création est
+refusée avec un message listant précisément la ou les balises en cause
+(rien n'est enregistré) — cela permet de vérifier un modèle avant de le
+mettre à disposition des utilisateurs. D'autres balises (ex. temps moyen
+de décroché pour Phone, nécessitant un nouveau calcul) seront ajoutées au
+fur et à mesure des besoins.
+
+Le rapport généré est stocké en base (comme les modèles), et un bouton
+**« Télécharger »** est disponible sur chaque ligne du tableau. Une
+visionneuse intégrée (pour prévisualiser le .pptx sans le télécharger)
+reste à définir — voir la note de conception ci-dessous.
+
+> **Note de conception (en attente d'arbitrage)** : afficher un .pptx
+> directement dans le navigateur nécessite soit un service de visionneuse
+> externe (Microsoft Office Online / Google Docs Viewer — mais cela
+> implique d'envoyer le fichier, donc des données de résultats clients, à
+> un tiers, via une URL temporaire accessible sans authentification),
+> soit une conversion serveur (LibreOffice), qui demande de passer
+> l'hébergement Render en environnement Docker. Aucune des deux options
+> n'a été retenue pour l'instant ; à trancher avant d'implémenter la
+> visionneuse.
+
 ## Structure du projet
 
 ```

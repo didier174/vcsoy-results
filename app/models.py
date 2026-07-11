@@ -282,10 +282,11 @@ class ReportTemplate(db.Model):
 
 class StudyReport(db.Model):
     """
-    Un rapport d'études, rattaché à une édition. Étape initiale : seuls le
-    nom et la date de création sont gérés ; le contenu du rapport et les
-    fonctionnalités « Créer »/« Modifier » seront définis dans une
-    prochaine étape.
+    Un rapport d'études généré pour un participant, à partir d'un modèle
+    de rapport (ReportTemplate) : le fichier PowerPoint résultant, balises
+    {{ ... }} remplacées par les données du participant, est stocké
+    directement en base (comme les modèles et les records), le disque du
+    serveur étant réinitialisé à chaque déploiement Render.
     """
 
     id = db.Column(db.Integer, primary_key=True)
@@ -293,7 +294,17 @@ class StudyReport(db.Model):
 
     name = db.Column(db.String(255), nullable=False)
 
+    participant_id = db.Column(db.Integer, db.ForeignKey("participant.id"), nullable=True)
+    report_template_id = db.Column(db.Integer, db.ForeignKey("report_template.id"), nullable=True)
+
+    filename = db.Column(db.String(255))
+    content_type = db.Column(db.String(100))
+    file_data = db.Column(db.LargeBinary, nullable=False)
+    file_size = db.Column(db.Integer)
+
     created_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    participant = db.relationship("Participant")
+    report_template = db.relationship("ReportTemplate")
     created_by = db.relationship("User")
