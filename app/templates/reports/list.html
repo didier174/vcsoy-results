@@ -14,12 +14,31 @@
     {% endif %}
   {% endwith %}
 
-  <div class="actions actions-top">
+  <div class="page-header-row">
+    <h2 class="detail-section-title" style="margin: 0;">Modèles de rapport chargés</h2>
     <button type="button" class="btn btn-secondary" onclick="document.getElementById('upload-template-popup').showModal()">
       Charger un modèle de rapport
     </button>
   </div>
+  {% if not templates %}
+    <div class="upload-card">
+      <p class="muted">Aucun modèle de rapport chargé pour cette édition pour le moment.</p>
+    </div>
+  {% else %}
+    <div class="uploaded-files-box">
+      {% for t in templates %}
+        <div class="uploaded-file-row">
+          <span class="uploaded-file-name">{{ t.filename }}</span>
+          <span class="uploaded-file-meta">
+            {{ t.uploaded_at.strftime('%d/%m/%Y %H:%M') if t.uploaded_at else '' }}
+            {% if t.uploaded_by %}· {{ t.uploaded_by.email }}{% endif %}
+          </span>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
 
+  <h2 class="detail-section-title">Rapports d'études</h2>
   <form method="post" id="reports-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="table-card">
