@@ -41,12 +41,16 @@ def _paragraph_text(paragraph):
     return "".join(run.text for run in paragraph.runs)
 
 
-def _substitute_paragraph(paragraph, values):
+def _normalize(tag):
+    return tag.strip().lower()
+
+
+def _substitute_paragraph(paragraph, lookup):
     full_text = _paragraph_text(paragraph)
     if "{{" not in full_text:
         return
 
-    new_text = TAG_RE.sub(lambda m: str(values.get(m.group(1), m.group(0))), full_text)
+    new_text = TAG_RE.sub(lambda m: str(lookup.get(_normalize(m.group(1)), m.group(0))), full_text)
     if new_text == full_text or not paragraph.runs:
         return
 
@@ -69,20 +73,23 @@ def find_tags(template_bytes):
 def render_template(template_bytes, values):
     """
     template_bytes : contenu binaire du modèle .pptx.
-    values : dict {nom de balise: valeur}.
+    values : dict {nom de balise: valeur}. La correspondance balise/clé
+    ignore la casse et les espaces superflus (ex. {{ PARTICIPANT }} et
+    {{ participant }} pointent tous deux vers la clé "Participant").
 
     Retourne (bytes du .pptx généré, ensemble des balises inconnues
     rencontrées dans le modèle mais absentes de `values`).
     """
     prs = Presentation(io.BytesIO(template_bytes))
+    lookup = {_normalize(key): value for key, value in values.items()}
 
     unknown = set()
     for slide in prs.slides:
         for shape in _iter_shapes(slide.shapes):
             for paragraph in _iter_paragraphs(shape):
                 text = _paragraph_text(paragraph)
-                unknown.update(tag for tag in TAG_RE.findall(text) if tag not in values)
-                _substitute_paragraph(paragraph, values)
+                unknown.update(tag for tag in TAG_RE.findall(text) if _normalize(tag) not in lookup)
+                _substitute_paragraph(paragraph, lookup)
 
     out = io.BytesIO()
     prs.save(out)
