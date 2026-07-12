@@ -16,9 +16,16 @@
 
   <div class="page-header-row">
     <h2 class="detail-section-title" style="margin: 0;">Modèles de rapport chargés</h2>
-    <button type="button" class="btn btn-secondary" onclick="document.getElementById('upload-template-popup').showModal()">
-      Charger un modèle de rapport
-    </button>
+    <div class="actions" style="margin: 0;">
+      {% if templates and is_admin %}
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('delete-templates-popup').showModal()">
+          Supprimer un modèle
+        </button>
+      {% endif %}
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('upload-template-popup').showModal()">
+        Charger un modèle de rapport
+      </button>
+    </div>
   </div>
   {% if not templates %}
     <div class="upload-card">
@@ -100,6 +107,47 @@
     </div>
   </form>
 </dialog>
+
+{% if templates and is_admin %}
+  <dialog id="delete-templates-popup" class="app-dialog">
+    <h3>Supprimer des modèles de rapport</h3>
+    <p class="dialog-field">Sélectionnez les modèles à supprimer <strong>définitivement</strong>.</p>
+    <form method="post" action="{{ url_for('reports.delete_templates') }}" id="delete-templates-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="compilation-table-wrap">
+        <table class="compilation-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Fichier</th>
+              <th>Chargé le</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in templates %}
+              <tr>
+                <td><input type="checkbox" name="template_ids" value="{{ t.id }}"></td>
+                <td>{{ t.filename }}</td>
+                <td>{{ t.uploaded_at.strftime('%d/%m/%Y %H:%M') if t.uploaded_at else '' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <label class="dialog-input-label" style="display: flex; align-items: center; gap: 8px; margin-top: 14px;">
+        <input type="checkbox" required style="width: auto;">
+        <span>Je confirme vouloir supprimer définitivement les modèles sélectionnés.</span>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Fermer</button>
+        <button type="submit" class="btn btn-primary"
+                onclick="return confirm('Confirmez-vous la suppression définitive des modèles sélectionnés ? Cette action est irréversible.');">
+          Supprimer définitivement
+        </button>
+      </div>
+    </form>
+  </dialog>
+{% endif %}
 
 <dialog id="create-report-popup" class="app-dialog">
   <h3>Créer un rapport d'études</h3>

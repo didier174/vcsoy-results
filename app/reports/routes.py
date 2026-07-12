@@ -78,6 +78,35 @@ def upload_template():
     return redirect(url_for("reports.list_reports"))
 
 
+@reports_bp.route("/templates/delete", methods=["POST"])
+@login_required
+@admin_required
+def delete_templates():
+    edition_id = get_current_edition_id()
+    selected_ids = [int(i) for i in request.form.getlist("template_ids") if i.isdigit()]
+    if not selected_ids:
+        flash("Merci de choisir au moins un modèle à supprimer.", "error")
+        return redirect(url_for("reports.list_reports"))
+
+    to_delete = ReportTemplate.query.filter(
+        ReportTemplate.edition_id == edition_id, ReportTemplate.id.in_(selected_ids)
+    ).all()
+    deleted = len(to_delete)
+    names = ", ".join(t.filename for t in to_delete)
+
+    ids = [t.id for t in to_delete]
+    StudyReport.query.filter(StudyReport.report_template_id.in_(ids)).update(
+        {"report_template_id": None}, synchronize_session=False
+    )
+    for template in to_delete:
+        db.session.delete(template)
+    db.session.commit()
+
+    _log("Suppression de modèle(s) de rapport", details=f"{deleted} supprimé(s) (édition {edition_id}) : {names}")
+    flash(f"{deleted} modèle(s) supprimé(s).", "success")
+    return redirect(url_for("reports.list_reports"))
+
+
 @reports_bp.route("/new", methods=["POST"])
 @login_required
 def create_report():
