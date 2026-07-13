@@ -264,7 +264,7 @@ class TestRecord(db.Model):
 
 class ReportTemplate(db.Model):
     """
-    Un modèle de rapport chargé pour « Rapport d'études » : le fichier de
+    Un modèle de rapport chargé pour « Rapport d'étude » : le fichier de
     base à partir duquel un rapport sera créé. Stocké directement en base
     (comme les records), le disque du serveur étant réinitialisé à chaque
     déploiement Render.
@@ -286,7 +286,7 @@ class ReportTemplate(db.Model):
 
 class StudyReport(db.Model):
     """
-    Un rapport d'études généré pour un participant, à partir d'un modèle
+    Un rapport d'étude généré pour un participant, à partir d'un modèle
     de rapport (ReportTemplate) : le fichier PowerPoint résultant, balises
     {{ ... }} remplacées par les données du participant, est stocké
     directement en base (comme les modèles et les records), le disque du

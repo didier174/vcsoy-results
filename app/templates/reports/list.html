@@ -1,7 +1,7 @@
 {% extends "app_shell.html" %}
 {% block content %}
 <div class="page-block">
-  <h1 class="page-title">Rapport d'études</h1>
+  <h1 class="page-title">Rapport d'étude</h1>
   <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
@@ -45,7 +45,7 @@
     </div>
   {% endif %}
 
-  <h2 class="detail-section-title">Rapports d'études</h2>
+  <h2 class="detail-section-title">Rapports d'étude</h2>
   <form method="post" id="reports-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="table-card">
@@ -149,8 +149,8 @@
   </dialog>
 {% endif %}
 
-<dialog id="create-report-popup" class="app-dialog">
-  <h3>Créer un rapport d'études</h3>
+<dialog id="create-report-popup" class="app-dialog" data-edition-label="{{ edition.short_label }}">
+  <h3>Créer un rapport d'étude</h3>
   {% if not templates %}
     <p class="muted">Aucun modèle de rapport chargé. Utilisez « Charger un modèle de rapport » avant de créer un rapport.</p>
     <div class="dialog-actions">
@@ -173,9 +173,13 @@
         <select name="participant_id" id="create-report-participant" required>
           <option value="">— Choisir —</option>
           {% for p in participants %}
-            <option value="{{ p.id }}">{{ p.participant_name }}{% if p.code %} ({{ p.code }}){% endif %}</option>
+            <option value="{{ p.id }}" data-participant-name="{{ p.participant_name }}">{{ p.participant_name }}{% if p.code %} ({{ p.code }}){% endif %}</option>
           {% endfor %}
         </select>
+      </label>
+      <label class="dialog-input-label">
+        Nom du fichier (l'extension .pptx est ajoutée automatiquement)
+        <input type="text" name="report_filename" id="create-report-filename" required>
       </label>
       <div class="dialog-actions">
         <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Annuler</button>

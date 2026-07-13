@@ -1,5 +1,5 @@
 """
-Module « Rapport d'études ».
+Module « Rapport d'étude ».
 
 Liste des rapports d'études existants (nom + date de création),
 chargement d'un modèle de rapport (.pptx, stocké en base comme les
@@ -12,6 +12,7 @@ La fonctionnalité « Modifier » sera définie dans une prochaine étape.
 
 import io
 import mimetypes
+import re
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
 from flask_login import login_required, current_user
@@ -26,9 +27,23 @@ from app.reports.report_data import build_participant_placeholders
 
 reports_bp = Blueprint("reports", __name__, url_prefix="/reports")
 
-ACTIVE_ITEM = "Rapport d'études"
+ACTIVE_ITEM = "Rapport d'étude"
 
 REPORT_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+
+FILENAME_UNSAFE_RE = re.compile(r'[\\/:*?"<>|]')
+
+
+def _sanitize_report_filename(raw):
+    """
+    Nettoie le nom de fichier saisi par l'utilisateur : retire une
+    éventuelle extension .pptx déjà tapée (l'extension est toujours
+    imposée par le serveur) et remplace les caractères interdits dans un
+    nom de fichier, sans toucher aux accents/espaces.
+    """
+    name = re.sub(r"\.pptx$", "", raw.strip(), flags=re.IGNORECASE)
+    name = FILENAME_UNSAFE_RE.sub("_", name).strip()
+    return name or "Rapport"
 
 
 def _log(action, details=""):
@@ -113,9 +128,10 @@ def create_report():
     edition_id = get_current_edition_id()
     template_id = request.form.get("template_id", "").strip()
     participant_id = request.form.get("participant_id", "").strip()
+    report_filename = request.form.get("report_filename", "").strip()
 
-    if not template_id.isdigit() or not participant_id.isdigit():
-        flash("Merci de choisir un modèle et un participant.", "error")
+    if not template_id.isdigit() or not participant_id.isdigit() or not report_filename:
+        flash("Merci de choisir un modèle, un participant et un nom de fichier.", "error")
         return redirect(url_for("reports.list_reports"))
 
     template = ReportTemplate.query.filter_by(id=int(template_id), edition_id=edition_id).first()
@@ -136,8 +152,8 @@ def create_report():
         )
         return redirect(url_for("reports.list_reports"))
 
-    name = f"{participant.participant_name} — {template.filename}"
-    filename = f"{participant.participant_name} - {template.filename}"
+    name = _sanitize_report_filename(report_filename)
+    filename = f"{name}.pptx"
 
     report = StudyReport(
         edition_id=edition_id, name=name, participant_id=participant.id, report_template_id=template.id,
@@ -147,7 +163,7 @@ def create_report():
     db.session.add(report)
     db.session.commit()
 
-    _log("Création d'un rapport d'études", details=f"{name} (édition {edition_id})")
+    _log("Création d'un rapport d'étude", details=f"{name} (édition {edition_id})")
     flash(f"Rapport « {name} » créé avec succès.", "success")
     return redirect(url_for("reports.list_reports"))
 

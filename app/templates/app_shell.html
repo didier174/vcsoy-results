@@ -34,7 +34,7 @@
           <a href="{{ url_for('results.presentation_results') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
         {% elif item == "Liste des lauréats" %}
           <a href="{{ url_for('results.winners_page') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
-        {% elif item == "Rapport d'études" %}
+        {% elif item == "Rapport d'étude" %}
           <a href="{{ url_for('reports.list_reports') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
         {% elif item == "Administration" %}
           <a href="{{ url_for('admin.list_users') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>

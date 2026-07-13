@@ -13,7 +13,7 @@ MENU_ITEMS = [
     "Liste des tests",
     "Compilation des résultats",
     "Liste des résultats",
-    "Rapport d'études",
+    "Rapport d'étude",
     "Liste des lauréats",
     "Facturation",
     "Administration",

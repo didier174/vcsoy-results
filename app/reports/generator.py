@@ -1,5 +1,5 @@
 """
-Génère un rapport d'études (.pptx) à partir d'un modèle et d'un
+Génère un rapport d'étude (.pptx) à partir d'un modèle et d'un
 dictionnaire de valeurs, en remplaçant les balises {{ Nom de la balise }}
 dans tous les textes du modèle (titres, zones de texte, tableaux, formes
 groupées).
