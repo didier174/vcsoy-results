@@ -27,9 +27,9 @@
               <td>{{ row.participant_name }}</td>
               <td>{{ row.category_code }}</td>
               {% for channel in channel_order %}
-                <td>{{ '%.2f'|format(row.channels[channel].note_20) if row.channels[channel].note_20 is not none else '—' }}</td>
+                <td>{{ '%.2f'|format(row.channels[channel].note_20 * 5) ~ '%' if row.channels[channel].note_20 is not none else '—' }}</td>
               {% endfor %}
-              <td>{{ '%.2f'|format(row.consolidated_score) if row.consolidated_score is not none else '—' }}</td>
+              <td>{{ '%.2f'|format(row.consolidated_score * 5) ~ '%' if row.consolidated_score is not none else '—' }}</td>
             </tr>
           {% endfor %}
         </tbody>
@@ -69,7 +69,7 @@
               <tr>
                 <td>{{ w.category_label }} ({{ w.category_code }})</td>
                 <td>{{ w.winner_name }}</td>
-                <td>{{ '%.2f'|format(w.winner_score) }}</td>
+                <td>{{ '%.2f'|format(w.winner_score * 5) }}%</td>
               </tr>
             {% endfor %}
           </tbody>

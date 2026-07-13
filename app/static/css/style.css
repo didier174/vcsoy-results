@@ -889,6 +889,14 @@ a { text-decoration: none; color: inherit; }
 
 /* ---------- Liste des résultats ---------- */
 
+.results-summary-line {
+  background: var(--item-hover);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+
 .results-filter-row {
   display: flex;
   gap: 16px;
@@ -934,6 +942,13 @@ a { text-decoration: none; color: inherit; }
 .winner-name {
   font-size: 16px;
   font-weight: 700;
+}
+
+.winner-score {
+  margin-left: auto;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--red);
 }
 
 .inline-form { display: inline; }

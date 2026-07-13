@@ -18,7 +18,13 @@ function _getPresentationRows() {
   return el ? JSON.parse(el.textContent) : [];
 }
 
-function _renderRankingTable(container, entries, showCategory) {
+function _average(entries) {
+  if (entries.length === 0) return null;
+  const sum = entries.reduce((acc, e) => acc + e.note, 0);
+  return sum / entries.length;
+}
+
+function _renderRankingTable(container, entries, showCategory, summaryLabel) {
   container.innerHTML = "";
 
   if (entries.length === 0) {
@@ -27,6 +33,13 @@ function _renderRankingTable(container, entries, showCategory) {
     empty.textContent = "Aucun résultat pour cette sélection.";
     container.appendChild(empty);
     return;
+  }
+
+  if (summaryLabel) {
+    const summary = document.createElement("p");
+    summary.className = "results-summary-line";
+    summary.innerHTML = "<strong>" + summaryLabel + " :</strong> " + _average(entries).toFixed(2) + " / 20";
+    container.appendChild(summary);
   }
 
   const table = document.createElement("table");
@@ -59,7 +72,10 @@ function showResultsByCategory() {
     .map((r) => ({ name: r.participant_name, note: r.channels[channel].note_20 }))
     .sort((a, b) => b.note - a.note);
 
-  _renderRankingTable(document.getElementById("results-by-category-content"), entries, false);
+  _renderRankingTable(
+    document.getElementById("results-by-category-content"), entries, false,
+    "Note sur 20 pour toute la catégorie (moyenne des participants)"
+  );
 }
 
 function showResultsAllCategories() {
@@ -75,5 +91,8 @@ function showResultsAllCategories() {
     }))
     .sort((a, b) => b.note - a.note);
 
-  _renderRankingTable(document.getElementById("results-all-categories-content"), entries, true);
+  _renderRankingTable(
+    document.getElementById("results-all-categories-content"), entries, true,
+    "Note sur 20 pour tout le canal (moyenne des participants)"
+  );
 }

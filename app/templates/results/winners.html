@@ -20,6 +20,7 @@
           <img src="{{ url_for('static', filename='img/trophy.png') }}" alt="Trophée" class="winner-trophy">
           <span class="winner-category">{{ w.category_label }}</span>
           <span class="winner-name">{{ w.winner_name }}</span>
+          <span class="winner-score">{{ '%.2f'|format(w.winner_score * 5) }}%</span>
         </div>
       {% endfor %}
     </div>
