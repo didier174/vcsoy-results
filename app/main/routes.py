@@ -42,7 +42,7 @@ def dashboard():
 def module(item_name):
     if item_name == "Configuration catégorie":
         return redirect(url_for("categories.list_categories"))
-    if item_name == "Configuration Participant":
+    if item_name == "Gestion des participants":
         return redirect(url_for("participants.list_participants"))
     if item_name == "Chargement fichier résultat":
         return redirect(url_for("results.upload_page"))

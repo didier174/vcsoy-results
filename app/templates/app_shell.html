@@ -20,7 +20,7 @@
           {# item masqué : réservé aux administrateurs #}
         {% elif item == "Configuration catégorie" %}
           <a href="{{ url_for('categories.list_categories') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
-        {% elif item == "Configuration Participant" %}
+        {% elif item == "Gestion des participants" %}
           <a href="{{ url_for('participants.list_participants') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
         {% elif item == "Chargement fichier résultat" %}
           <a href="{{ url_for('results.upload_page') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>

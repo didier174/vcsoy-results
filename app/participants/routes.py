@@ -48,7 +48,7 @@ def _render_list(error=None, confirm_delete=None):
     return render_template(
         "participants/list.html",
         edition=get_edition(edition_id), participants=participants, error=error, confirm_delete=confirm_delete,
-        active_item="Configuration Participant", menu_items=MENU_ITEMS,
+        active_item="Gestion des participants", menu_items=MENU_ITEMS,
     )
 
 
@@ -220,7 +220,7 @@ def _render_form(participant, mode, errors=None):
         "participants/form.html",
         participant=participant, categories=categories, countries=COUNTRIES,
         mode=mode, errors=errors or [], same_address_default=same_address_default,
-        edition=get_edition(get_current_edition_id()), active_item="Configuration Participant",
+        edition=get_edition(get_current_edition_id()), active_item="Gestion des participants",
         menu_items=MENU_ITEMS,
     )
 

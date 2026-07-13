@@ -15,7 +15,7 @@ règles définies dans le cahier des charges :
   sont également obligatoires (ce sont des colonnes propres à cet onglet).
 - Le canal de l'onglet (Phone, Email, Web Navigation, Social Networks, Chat)
   doit être déclaré actif pour le participant visé (case à cocher du canal
-  dans Configuration Participant) : un test chargé pour un canal non coché
+  dans Gestion des participants) : un test chargé pour un canal non coché
   chez ce participant est une erreur.
 
 Une ligne entièrement vide est ignorée (pas une erreur).
@@ -43,7 +43,7 @@ VALID_CODE_VALUES = {"0", "1", "2", "non applicable", "non observable"}
 
 # Nom du champ Participant (case à cocher) correspondant à chaque canal, pour
 # vérifier qu'un test n'est chargé que pour un canal déclaré actif pour ce
-# participant dans Configuration Participant.
+# participant dans Gestion des participants.
 CHANNEL_FIELD_BY_KEY = {
     "phone": "channel_phone",
     "mail": "channel_mail",
@@ -156,7 +156,7 @@ def validate_workbook(wb, categories, participants):
                                 row_errors.append((
                                     1,
                                     f"Le canal « {sheet_name} » n'est pas déclaré actif pour le participant "
-                                    f"« {participant.participant_name} » (case décochée dans Configuration Participant).",
+                                    f"« {participant.participant_name} » (case décochée dans Gestion des participants).",
                                 ))
                                 invalid_channels.setdefault(sheet_name, set()).add(participant.participant_name)
 
