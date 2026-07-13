@@ -1,0 +1,245 @@
+{% extends "app_shell.html" %}
+{% block content %}
+<div class="page-block">
+  <h1 class="page-title">Générer des scénarios</h1>
+  <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-list">
+        {% for category, message in messages %}
+          <p class="flash {{ 'flash-error' if category == 'error' else 'flash-success' }}">{{ message }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <div class="page-header-row">
+    <h2 class="detail-section-title" style="margin: 0;">Modèles de scénarios chargés</h2>
+    <div class="actions" style="margin: 0;">
+      {% if templates and is_admin %}
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('delete-scenario-templates-popup').showModal()">
+          Supprimer un modèle
+        </button>
+      {% endif %}
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('upload-book-template-popup').showModal()">
+        Charger modèle Book scénario
+      </button>
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('upload-problematiques-template-popup').showModal()">
+        Charger modèle Problématiques
+      </button>
+    </div>
+  </div>
+
+  {% if not templates %}
+    <div class="upload-card">
+      <p class="muted">Aucun modèle de scénario chargé pour cette édition pour le moment.</p>
+    </div>
+  {% else %}
+    <div class="table-card">
+      <div class="table-row table-header">
+        <div class="col col-scenario-tpl-name">Fichier</div>
+        <div class="col col-scenario-tpl-kind">Type</div>
+        <div class="col col-scenario-tpl-date">Chargé le</div>
+      </div>
+      {% for t in templates %}
+        <div class="table-row">
+          <div class="col col-scenario-tpl-name">{{ t.filename }}</div>
+          <div class="col col-scenario-tpl-kind">{{ kind_labels.get(t.kind, t.kind) }}</div>
+          <div class="col col-scenario-tpl-date">{{ t.uploaded_at.strftime('%d/%m/%Y %H:%M') if t.uploaded_at else '' }}</div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <h2 class="detail-section-title">Fichiers scénarios</h2>
+  <form method="post" id="scenario-files-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="table-card">
+      <div class="table-row table-header">
+        <div class="col col-check"></div>
+        <div class="col col-report-name">Nom du fichier</div>
+        <div class="col col-report-date">Date de création</div>
+        <div class="col col-report-dl"></div>
+      </div>
+
+      {% if not files %}
+        <div class="table-empty">Aucun fichier scénario pour cette édition.</div>
+      {% endif %}
+
+      {% for f in files %}
+        <div class="table-row">
+          <div class="col col-check">
+            <input type="checkbox" name="selected_ids" value="{{ f.id }}" class="scenario-file-checkbox">
+          </div>
+          <div class="col col-report-name">{{ f.name }}</div>
+          <div class="col col-report-date">{{ f.created_at.strftime('%d/%m/%Y %H:%M') if f.created_at else '' }}</div>
+          <div class="col col-report-dl">
+            <a href="{{ url_for('scenarios.download_scenario_file', file_id=f.id) }}" class="btn btn-secondary btn-compact">Télécharger</a>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="actions">
+      <button type="button" class="btn btn-primary" id="scenario-create-btn"
+              onclick="document.getElementById('create-scenario-popup').showModal()">
+        Créer
+      </button>
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('upload-scenario-file-popup').showModal()">
+        Charger
+      </button>
+      <button type="submit" class="btn btn-secondary" id="scenario-delete-btn" disabled
+              formaction="{{ url_for('scenarios.delete_scenario_files') }}"
+              onclick="return confirm('Confirmez-vous la suppression définitive du/des fichier(s) sélectionné(s) ? Cette action est irréversible.');">
+        Supprimer
+      </button>
+    </div>
+  </form>
+</div>
+
+{% if templates and is_admin %}
+  <dialog id="delete-scenario-templates-popup" class="app-dialog">
+    <h3>Supprimer des modèles de scénario</h3>
+    <p class="dialog-field">Sélectionnez les modèles à supprimer <strong>définitivement</strong>.</p>
+    <form method="post" action="{{ url_for('scenarios.delete_templates') }}" id="delete-scenario-templates-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="compilation-table-wrap">
+        <table class="compilation-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Fichier</th>
+              <th>Type</th>
+              <th>Chargé le</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in templates %}
+              <tr>
+                <td><input type="checkbox" name="template_ids" value="{{ t.id }}"></td>
+                <td>{{ t.filename }}</td>
+                <td>{{ kind_labels.get(t.kind, t.kind) }}</td>
+                <td>{{ t.uploaded_at.strftime('%d/%m/%Y %H:%M') if t.uploaded_at else '' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <label class="dialog-input-label" style="display: flex; align-items: center; gap: 8px; margin-top: 14px;">
+        <input type="checkbox" required style="width: auto;">
+        <span>Je confirme vouloir supprimer définitivement les modèles sélectionnés.</span>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Fermer</button>
+        <button type="submit" class="btn btn-primary"
+                onclick="return confirm('Confirmez-vous la suppression définitive des modèles sélectionnés ? Cette action est irréversible.');">
+          Supprimer définitivement
+        </button>
+      </div>
+    </form>
+  </dialog>
+{% endif %}
+
+<dialog id="upload-book-template-popup" class="app-dialog">
+  <h3>Charger un modèle de Book scénario</h3>
+  <p class="muted">
+    Chargez le fichier du modèle de Book scénario depuis votre ordinateur
+    (bureau ou tout autre dossier local).
+  </p>
+  <form method="post" action="{{ url_for('scenarios.upload_template') }}" enctype="multipart/form-data" class="upload-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="kind" value="book">
+    <input type="file" name="template_file" required>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Fermer</button>
+      <button type="submit" class="btn btn-primary">Charger</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="upload-problematiques-template-popup" class="app-dialog">
+  <h3>Charger un modèle de Problématiques</h3>
+  <p class="muted">
+    Chargez le fichier du modèle de Problématiques depuis votre ordinateur
+    (bureau ou tout autre dossier local).
+  </p>
+  <form method="post" action="{{ url_for('scenarios.upload_template') }}" enctype="multipart/form-data" class="upload-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="kind" value="problematiques">
+    <input type="file" name="template_file" required>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Fermer</button>
+      <button type="submit" class="btn btn-primary">Charger</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="upload-scenario-file-popup" class="app-dialog">
+  <h3>Charger un fichier scénario</h3>
+  <p class="muted">
+    Chargez un fichier scénario déjà prêt depuis votre ordinateur (bureau
+    ou tout autre dossier local). Il apparaîtra ensuite dans la liste des
+    fichiers scénarios.
+  </p>
+  <form method="post" action="{{ url_for('scenarios.upload_scenario_file') }}" enctype="multipart/form-data" class="upload-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="file" name="scenario_file" required>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Fermer</button>
+      <button type="submit" class="btn btn-primary">Charger</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="create-scenario-popup" class="app-dialog">
+  <h3>Créer des fichiers scénarios</h3>
+  {% if not book_templates or not problematiques_templates %}
+    <p class="muted">
+      Il manque au moins un modèle de Book scénario et un modèle de
+      Problématiques. Utilisez les boutons « Charger modèle Book scénario »
+      et « Charger modèle Problématiques » avant de créer.
+    </p>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Fermer</button>
+    </div>
+  {% else %}
+    <form method="post" action="{{ url_for('scenarios.create_scenario_files') }}" id="create-scenario-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="dialog-input-label">
+        Modèle de Book scénario
+        <select name="book_template_id" id="create-scenario-book" required>
+          <option value="">— Choisir —</option>
+          {% for t in book_templates %}
+            <option value="{{ t.id }}">{{ t.filename }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="dialog-input-label">
+        Modèle de Problématiques
+        <select name="problematiques_template_id" id="create-scenario-problematiques" required>
+          <option value="">— Choisir —</option>
+          {% for t in problematiques_templates %}
+            <option value="{{ t.id }}">{{ t.filename }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="dialog-input-label">
+        Participant
+        <select name="participant_id" id="create-scenario-participant" required>
+          <option value="">— Choisir —</option>
+          {% for p in participants %}
+            <option value="{{ p.id }}">{{ p.participant_name }}{% if p.code %} ({{ p.code }}){% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Annuler</button>
+        <button type="submit" class="btn btn-primary" id="create-scenario-submit" disabled>Créer</button>
+      </div>
+    </form>
+  {% endif %}
+</dialog>
+
+<script src="{{ url_for('static', filename='js/scenarios.js') }}"></script>
+{% endblock %}

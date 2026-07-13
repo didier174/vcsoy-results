@@ -312,3 +312,62 @@ class StudyReport(db.Model):
     participant = db.relationship("Participant")
     report_template = db.relationship("ReportTemplate")
     created_by = db.relationship("User")
+
+
+class ScenarioTemplate(db.Model):
+    """
+    Un modèle chargé pour « Gestion des scénarios » > « Générer des
+    scénarios » : soit un modèle de Book scénario, soit un modèle de
+    Problématiques (kind). Stocké directement en base (comme les modèles
+    de rapport), le disque du serveur étant réinitialisé à chaque
+    déploiement Render.
+    """
+
+    KIND_BOOK = "book"
+    KIND_PROBLEMATIQUES = "problematiques"
+
+    id = db.Column(db.Integer, primary_key=True)
+    edition_id = db.Column(db.String(20), nullable=False, index=True)
+    kind = db.Column(db.String(20), nullable=False)
+
+    filename = db.Column(db.String(255))
+    content_type = db.Column(db.String(100))
+    file_data = db.Column(db.LargeBinary, nullable=False)
+    file_size = db.Column(db.Integer)
+
+    uploaded_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    uploaded_by = db.relationship("User")
+
+
+class ScenarioFile(db.Model):
+    """
+    Un fichier scénario généré pour un participant (Book scénario ou
+    Problématiques, voir kind), à partir d'un modèle (ScenarioTemplate).
+    Pour l'instant, une simple copie du modèle sélectionné ; le contenu
+    sera dérivé du modèle dans une prochaine étape.
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    edition_id = db.Column(db.String(20), nullable=False, index=True)
+    # Nul pour un fichier chargé directement (voir upload_scenario_file) :
+    # son type n'est pas demandé à l'utilisateur dans ce cas.
+    kind = db.Column(db.String(20), nullable=True)
+
+    name = db.Column(db.String(255), nullable=False)
+
+    participant_id = db.Column(db.Integer, db.ForeignKey("participant.id"), nullable=True)
+    source_template_id = db.Column(db.Integer, db.ForeignKey("scenario_template.id"), nullable=True)
+
+    filename = db.Column(db.String(255))
+    content_type = db.Column(db.String(100))
+    file_data = db.Column(db.LargeBinary, nullable=False)
+    file_size = db.Column(db.Integer)
+
+    created_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    participant = db.relationship("Participant")
+    source_template = db.relationship("ScenarioTemplate")
+    created_by = db.relationship("User")

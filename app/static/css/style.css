@@ -196,6 +196,12 @@ a { text-decoration: none; color: inherit; }
   font-weight: 600;
 }
 
+.menu-subitem {
+  padding-left: 36px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .logout-link {
   padding: 14px 20px;
   color: var(--red);
@@ -314,6 +320,9 @@ a { text-decoration: none; color: inherit; }
 .col-report-name { flex: 1 1 55%; }
 .col-report-date { flex: 0 0 140px; }
 .col-report-dl { flex: 0 0 120px; }
+.col-scenario-tpl-name { flex: 1 1 45%; }
+.col-scenario-tpl-kind { flex: 0 0 160px; }
+.col-scenario-tpl-date { flex: 0 0 140px; }
 
 .table-row input[type="text"] {
   width: 100%;

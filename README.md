@@ -799,6 +799,50 @@ ALTER TABLE "user" ADD COLUMN default_edition_id VARCHAR(20);
   trient la liste par ordre croissant (même principe que le tri déjà en
   place sur Compilation des résultats).
 
+## Étape 17 — Liste des résultats/lauréats en % + moyennes dans les popups
+
+Dans « Liste des résultats », seule la colonne **« Note consolidée »**
+du tableau principal (et la colonne **« Note finale »** du tableau des
+gagnants en dessous) s'affiche désormais en base 100 avec un signe `%`,
+au lieu de la note sur 20 — toutes les autres notes (par canal) restent
+sur 20. « Liste des lauréats » affiche la note finale en % à côté du nom
+du lauréat. Les popups **« Résultats par canal par catégorie »** et
+**« toutes catégories »** affichent la moyenne des participants (sur 20)
+au-dessus de la liste.
+
+## Étape 18 — Gestion des scénarios : Générer des scénarios
+
+Deux sous-fonctionnalités apparaissent dans le menu, indentées, sous
+« Gestion des scénarios » (visibles uniquement quand on est dans cette
+section) : **« Générer des scénarios »** (détaillée ci-dessous) et
+**« Générer les tests »** (écran d'attente, sera défini dans une
+prochaine étape).
+
+« Générer des scénarios » reprend la structure de « Rapport d'étude » :
+
+- **Modèles de scénarios chargés** : table listant les modèles de
+  **Book scénario** et de **Problématiques** (fichier, type, date de
+  chargement), avec deux boutons de chargement dédiés (« Charger modèle
+  Book scénario » / « Charger modèle Problématiques », même design que
+  « Chargement fichier résultat », aucune restriction de format). Un
+  bouton **« Supprimer un modèle »** (admin, popup à cases à cocher,
+  confirmation) permet de retirer un modèle ; si un fichier scénario déjà
+  généré en dépendait, sa référence est détachée (mise à `NULL`) plutôt
+  que bloquée.
+- **Fichiers scénarios** : table des fichiers générés/chargés (nom, date
+  et heure de création, bouton Télécharger), avec trois boutons :
+  - **Créer** : vérifie qu'au moins un modèle de chaque type existe,
+    sinon invite à en charger un ; sinon ouvre une popup pour choisir un
+    modèle de Book, un modèle de Problématiques et un participant. Génère
+    deux fichiers nommés `Book_scénario_<Participant>_<Édition>` et
+    `Problématiques_<Participant>_<Édition>` — pour l'instant une simple
+    copie du contenu des modèles sélectionnés (le contenu sera dérivé des
+    modèles dans une prochaine étape).
+  - **Charger** : charge directement un fichier scénario déjà prêt depuis
+    le disque local.
+  - **Supprimer** (admin, sélection + confirmation) : supprime les
+    fichiers scénarios sélectionnés.
+
 ## Structure du projet
 
 ```
@@ -830,6 +874,8 @@ vcsoy_web/
 │   │   └── validation.py          # Règles de contrôle des fichiers record
 │   ├── reports/
 │   │   └── routes.py              # Rapport d'études : liste, modèle, suppression
+│   ├── scenarios/
+│   │   └── routes.py              # Générer des scénarios : modèles, création, suppression
 │   ├── templates/                # gabarits HTML (Jinja2)
 │   └── static/
 │       ├── css/style.css

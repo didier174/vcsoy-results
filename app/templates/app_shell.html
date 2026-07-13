@@ -22,6 +22,12 @@
           <a href="{{ url_for('categories.list_categories') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
         {% elif item == "Gestion des participants" %}
           <a href="{{ url_for('participants.list_participants') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
+        {% elif item == "Gestion des scénarios" %}
+          <a href="{{ url_for('scenarios.index') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
+          {% if active_item in ["Gestion des scénarios", "Générer des scénarios", "Générer les tests"] %}
+            <a href="{{ url_for('scenarios.generate_scenarios') }}" class="menu-item menu-subitem {{ 'active' if active_item == 'Générer des scénarios' else '' }}">Générer des scénarios</a>
+            <a href="{{ url_for('scenarios.generate_tests') }}" class="menu-item menu-subitem {{ 'active' if active_item == 'Générer les tests' else '' }}">Générer les tests</a>
+          {% endif %}
         {% elif item == "Chargement fichier résultat" %}
           <a href="{{ url_for('results.upload_page') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
         {% elif item == "Chargement des records" %}
