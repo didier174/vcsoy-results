@@ -11,7 +11,21 @@ dessus.
 
 from flask import session
 
+# Édition « bac à sable » : toujours proposée en premier, utilisée pour
+# tester/simuler des données sans jamais perturber une édition réelle.
+# Les administrateurs y démarrent systématiquement (voir
+# resolve_startup_edition_id) ; les autres utilisateurs peuvent y être
+# rattachés par défaut depuis Administration tant qu'une édition réelle
+# ne leur a pas été assignée.
+WHITE_EDITION_ID = "blanche"
+
 EDITIONS = [
+    {
+        "id": WHITE_EDITION_ID,
+        "short_label": "Édition Blanche",
+        "full_label": "Édition Blanche — environnement de test",
+        "logo_file": "logo_annee_fr.png",
+    },
     {
         "id": "2027",
         "short_label": "ESCDA 2027",
@@ -66,3 +80,24 @@ def get_current_edition_id():
 def set_current_edition_id(edition_id):
     if is_valid_edition(edition_id):
         session["edition_id"] = edition_id
+
+
+def resolve_startup_edition_id(user):
+    """
+    Détermine l'édition sur laquelle démarrer l'outil pour cet utilisateur
+    à la connexion. Les administrateurs démarrent toujours sur l'édition
+    blanche (pour ne jamais mélanger leurs tests/simulations avec les
+    données réelles d'une édition en cours) ; les autres utilisateurs
+    démarrent sur l'édition qui leur a été assignée dans Administration
+    (édition blanche par défaut tant qu'elle n'a pas été changée).
+    """
+    from app.access_control import user_is_admin
+
+    if user_is_admin(user):
+        return WHITE_EDITION_ID
+
+    default_edition_id = getattr(user, "default_edition_id", None)
+    if default_edition_id and is_valid_edition(default_edition_id):
+        return default_edition_id
+
+    return WHITE_EDITION_ID

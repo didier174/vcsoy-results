@@ -51,6 +51,8 @@ PDF_LOGO_HEIGHT_PT = 62
 # n'a pas encore été fourni : on utilise en attendant le logo français de
 # la même édition, pour ne jamais afficher un logo d'une mauvaise édition.
 LOGO_FILES = {
+    ("blanche", "fr"): "logo_annee_fr.png",
+    ("blanche", "en"): "logo_annee_fr.png",  # même logo qu'en français (demande explicite)
     ("2027", "fr"): "logo_2027_fr.png",
     ("2027", "en"): "logo_2027_en.png",
     ("2028", "fr"): "logo_2028_fr.png",

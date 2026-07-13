@@ -701,6 +701,7 @@ a { text-decoration: none; color: inherit; }
 .col-user-email { flex: 1 1 40%; }
 .col-user-added { flex: 0 0 110px; }
 .col-user-by { flex: 1 1 25%; color: var(--muted); }
+.col-user-edition { flex: 0 0 180px; }
 
 .dialog-input-label {
   display: block;

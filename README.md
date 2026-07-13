@@ -730,6 +730,36 @@ reste à définir — voir la note de conception ci-dessous.
 > n'a été retenue pour l'instant ; à trancher avant d'implémenter la
 > visionneuse.
 
+## Étape 15 — Édition Blanche + édition de démarrage par utilisateur
+
+Le titre affiché sur l'écran de connexion devient **« Outil de gestion
+des Tests client Mystère »**.
+
+Nouvelle édition **« Édition Blanche »**, un environnement de test qui
+apparaît en premier dans toutes les listes d'édition (« Édition 0 »). Elle
+réutilise le logo déjà présent `logo_annee_fr.png` (identique en français
+et en anglais, y compris pour les factures).
+
+Dans **Administration**, chaque utilisateur listé dispose désormais d'un
+sélecteur **« Édition de démarrage »** : l'édition sur laquelle l'outil
+s'ouvre à sa connexion. Par défaut (tant qu'elle n'a pas été changée),
+c'est l'Édition Blanche. **Les administrateurs démarrent toujours sur
+l'Édition Blanche**, quel que soit ce réglage — cela permet de continuer à
+tester/simuler des données sans jamais perturber une édition réelle une
+fois que celle-ci contient de vraies données.
+
+**Important — migration de la base en production** : le modèle `User` a
+une nouvelle colonne `default_edition_id`. Comme pour l'incident
+précédent (table `study_report`), `db.create_all()` ne modifie jamais une
+table déjà existante. Contrairement à `study_report`, la table `user`
+contient de vraies données (comptes, droits admin) : il ne faut **surtout
+pas** la supprimer. Il faut exécuter, une seule fois, sur la base de
+production :
+
+```sql
+ALTER TABLE "user" ADD COLUMN default_edition_id VARCHAR(20);
+```
+
 ## Structure du projet
 
 ```

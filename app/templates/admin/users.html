@@ -73,10 +73,17 @@
     définitivement des données (« Annuler un fichier »). Les autres
     utilisateurs autorisés n'ont pas ces droits.
   </p>
+  <p class="muted">
+    « Édition de démarrage » : édition sur laquelle l'outil s'ouvre à la
+    connexion de cet utilisateur (édition blanche par défaut). Sans effet
+    pour les administrateurs, qui démarrent toujours sur l'édition
+    blanche.
+  </p>
   <div class="table-card">
     <div class="table-row table-header">
       <div class="col col-user-email">Adresse e-mail</div>
       <div class="col col-user-added">Statut</div>
+      <div class="col col-user-edition">Édition de démarrage</div>
       <div class="col col-check"></div>
     </div>
     {% for u in all_users %}
@@ -85,6 +92,17 @@
         <div class="col col-user-added">
           {{ 'Administrateur' if (u.is_admin or u.email in admin_emails) else 'Collaborateur' }}
           {% if u.email in admin_emails %}(fixé par ADMIN_EMAILS){% endif %}
+        </div>
+        <div class="col col-user-edition">
+          <form method="post" action="{{ url_for('admin.set_user_default_edition') }}" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="user_id" value="{{ u.id }}">
+            <select name="default_edition_id" onchange="this.form.submit()">
+              {% for e in editions %}
+                <option value="{{ e.id }}" {{ 'selected' if (u.default_edition_id or white_edition_id) == e.id else '' }}>{{ e.short_label }}</option>
+              {% endfor %}
+            </select>
+          </form>
         </div>
         <div class="col col-check">
           {% if u.email not in admin_emails and u.id != current_user.id %}

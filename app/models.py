@@ -20,6 +20,10 @@ class User(UserMixin, db.Model):
     # Administrateur : accès à Administration et à la suppression de
     # données (Annuler un fichier). Voir aussi ADMIN_EMAILS (access_control.py).
     is_admin = db.Column(db.Boolean, default=False, nullable=False)
+    # Édition sur laquelle démarrer l'outil à la connexion (voir
+    # editions.resolve_startup_edition_id) ; sans effet pour les
+    # administrateurs, qui démarrent toujours sur l'édition blanche.
+    default_edition_id = db.Column(db.String(20), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def get_id(self):

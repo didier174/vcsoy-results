@@ -19,7 +19,7 @@ from flask_login import login_required, current_user
 
 from app.extensions import db
 from app.models import AuthorizedUser, ActionLog, User, Category, Participant
-from app.editions import get_current_edition_id, get_edition, list_editions, is_valid_edition
+from app.editions import get_current_edition_id, get_edition, list_editions, is_valid_edition, WHITE_EDITION_ID
 from app.access_control import ALLOWED_EMAILS, ADMIN_EMAILS, admin_required
 from app.menu import MENU_ITEMS
 
@@ -47,6 +47,7 @@ def _render_users(error=None):
         "admin/users.html",
         edition=edition, db_users=db_users, env_emails=env_emails, all_users=all_users,
         admin_emails=sorted(ADMIN_EMAILS), error=error, editions=list_editions(),
+        white_edition_id=WHITE_EDITION_ID,
         active_item=ACTIVE_ITEM, menu_items=MENU_ITEMS,
     )
 
@@ -118,6 +119,22 @@ def toggle_admin():
         "Modification droits administrateur",
         details=f"{user.email} -> {'administrateur' if user.is_admin else 'collaborateur standard'}",
     )
+    return redirect(url_for("admin.list_users"))
+
+
+@admin_bp.route("/users/default-edition", methods=["POST"])
+@login_required
+@admin_required
+def set_user_default_edition():
+    user = User.query.get(request.form.get("user_id", type=int))
+    edition_id = request.form.get("default_edition_id", "").strip()
+
+    if not user or not is_valid_edition(edition_id):
+        return _render_users(error="Utilisateur ou édition invalide.")
+
+    user.default_edition_id = edition_id
+    db.session.commit()
+    _log("Modification édition de démarrage", details=f"{user.email} -> {edition_id}")
     return redirect(url_for("admin.list_users"))
 
 

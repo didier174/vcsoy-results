@@ -15,7 +15,7 @@ from flask_login import login_user, logout_user, login_required, current_user
 
 from app.extensions import db, oauth
 from app.models import User, ActionLog
-from app.editions import get_current_edition_id
+from app.editions import get_current_edition_id, resolve_startup_edition_id, set_current_edition_id
 from app.access_control import is_email_allowed
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
@@ -61,6 +61,7 @@ def login():
 
         session.permanent = True
         login_user(user)
+        set_current_edition_id(resolve_startup_edition_id(user))
         _log(user, "Ouverture de session (mode développement)")
         return redirect(url_for("main.dashboard"))
 
@@ -107,6 +108,7 @@ def google_callback():
 
     session.permanent = True
     login_user(user)
+    set_current_edition_id(resolve_startup_edition_id(user))
     _log(user, "Ouverture de session (Google)")
     return redirect(url_for("main.dashboard"))
 
