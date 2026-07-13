@@ -18,7 +18,7 @@ from flask import Blueprint, render_template, request, redirect, url_for
 from flask_login import login_required, current_user
 
 from app.extensions import db
-from app.models import Category, Participant, TestResult, ActionLog
+from app.models import Category, Participant, TestResult, TestRecord, Invoice, StudyReport, ActionLog
 from app.editions import get_current_edition_id, get_edition
 from app.access_control import user_is_admin
 from app.menu import MENU_ITEMS
@@ -121,7 +121,18 @@ def delete_selected():
                 ),
             })
 
+        test_ids = [t.id for t in TestResult.query.filter(TestResult.participant_id.in_(ids)).all()]
+        TestRecord.query.filter(TestRecord.test_result_id.in_(test_ids)).delete(synchronize_session=False)
         TestResult.query.filter(TestResult.participant_id.in_(ids)).delete(synchronize_session=False)
+
+    # Les factures et rapports d'études déjà générés sont des instantanés
+    # autonomes (données dupliquées au moment de la génération) : on
+    # détache simplement leur référence au participant plutôt que de les
+    # supprimer, pour ne pas perdre cet historique.
+    Invoice.query.filter(Invoice.participant_id.in_(ids)).update({"participant_id": None}, synchronize_session=False)
+    StudyReport.query.filter(StudyReport.participant_id.in_(ids)).update(
+        {"participant_id": None}, synchronize_session=False
+    )
 
     count = len(to_delete)
     for p in to_delete:

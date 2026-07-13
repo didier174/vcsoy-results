@@ -5,9 +5,8 @@ Liste des rapports d'études existants (nom + date de création),
 chargement d'un modèle de rapport (.pptx, stocké en base comme les
 records de test), création d'un rapport pour un participant à partir
 d'un modèle (balises {{ ... }} remplacées par ses données, voir
-generator.py/report_data.py), téléchargement et suppression de rapports.
-
-La fonctionnalité « Modifier » sera définie dans une prochaine étape.
+generator.py/report_data.py), chargement direct d'un rapport déjà prêt
+depuis le disque local, téléchargement et suppression de rapports.
 """
 
 import io
@@ -165,6 +164,35 @@ def create_report():
 
     _log("Création d'un rapport d'étude", details=f"{name} (édition {edition_id})")
     flash(f"Rapport « {name} » créé avec succès.", "success")
+    return redirect(url_for("reports.list_reports"))
+
+
+@reports_bp.route("/upload", methods=["POST"])
+@login_required
+def upload_report():
+    edition_id = get_current_edition_id()
+    file = request.files.get("report_file")
+    if not file or not file.filename:
+        flash("Merci de choisir un fichier avant de cliquer sur « Charger ».", "error")
+        return redirect(url_for("reports.list_reports"))
+
+    if not file.filename.lower().endswith(".pptx"):
+        flash("Seul le format .pptx est accepté pour un rapport d'étude.", "error")
+        return redirect(url_for("reports.list_reports"))
+
+    base_name = _sanitize_report_filename(file.filename)
+    content = file.read()
+
+    report = StudyReport(
+        edition_id=edition_id, name=base_name, filename=f"{base_name}.pptx",
+        content_type=REPORT_CONTENT_TYPE, file_data=content, file_size=len(content),
+        created_by_id=current_user.id,
+    )
+    db.session.add(report)
+    db.session.commit()
+
+    _log("Chargement direct d'un rapport d'étude", details=f"{base_name} (édition {edition_id})")
+    flash(f"Rapport « {base_name} » chargé avec succès.", "success")
     return redirect(url_for("reports.list_reports"))
 
 

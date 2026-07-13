@@ -13,10 +13,10 @@ from flask import session
 
 # Édition « bac à sable » : toujours proposée en premier, utilisée pour
 # tester/simuler des données sans jamais perturber une édition réelle.
-# Les administrateurs y démarrent systématiquement (voir
-# resolve_startup_edition_id) ; les autres utilisateurs peuvent y être
-# rattachés par défaut depuis Administration tant qu'une édition réelle
-# ne leur a pas été assignée.
+# Réservée aux administrateurs (voir list_editions_for) : les
+# administrateurs y démarrent systématiquement à la connexion (voir
+# resolve_startup_edition_id), les autres utilisateurs n'y ont jamais
+# accès (ni sélection manuelle, ni édition de démarrage assignée).
 WHITE_EDITION_ID = "blanche"
 
 EDITIONS = [
@@ -54,10 +54,26 @@ EDITIONS = [
 
 _BY_ID = {e["id"]: e for e in EDITIONS}
 DEFAULT_EDITION_ID = EDITIONS[0]["id"]
+# Édition « réelle » proposée par défaut à un collaborateur non
+# administrateur qui n'a pas encore d'édition de démarrage assignée
+# (l'édition blanche lui étant interdite, voir list_editions_for).
+FIRST_REAL_EDITION_ID = EDITIONS[1]["id"]
 
 
 def list_editions():
     return list(EDITIONS)
+
+
+def list_editions_for(user):
+    """
+    Liste des éditions visibles/sélectionnables par cet utilisateur :
+    l'édition blanche est réservée aux administrateurs.
+    """
+    from app.access_control import user_is_admin
+
+    if user_is_admin(user):
+        return list(EDITIONS)
+    return [e for e in EDITIONS if e["id"] != WHITE_EDITION_ID]
 
 
 def is_valid_edition(edition_id):
@@ -97,7 +113,7 @@ def resolve_startup_edition_id(user):
         return WHITE_EDITION_ID
 
     default_edition_id = getattr(user, "default_edition_id", None)
-    if default_edition_id and is_valid_edition(default_edition_id):
+    if default_edition_id and default_edition_id != WHITE_EDITION_ID and is_valid_edition(default_edition_id):
         return default_edition_id
 
-    return WHITE_EDITION_ID
+    return FIRST_REAL_EDITION_ID

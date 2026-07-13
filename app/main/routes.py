@@ -8,9 +8,13 @@ tous les items (sauf placeholder) affichent un écran d'attente générique.
 from flask import Blueprint, render_template, redirect, url_for, request
 from flask_login import login_required, current_user
 
-from app.editions import list_editions, get_edition, is_valid_edition, get_current_edition_id, set_current_edition_id
+from app.editions import (
+    list_editions_for, get_edition, is_valid_edition, get_current_edition_id, set_current_edition_id,
+    WHITE_EDITION_ID,
+)
 from app.models import ActionLog
 from app.extensions import db
+from app.access_control import user_is_admin
 from app.menu import MENU_ITEMS
 
 main_bp = Blueprint("main", __name__)
@@ -77,6 +81,8 @@ def module(item_name):
 def choose_edition():
     if request.method == "POST":
         new_edition_id = request.form.get("edition_id", "")
+        if new_edition_id == WHITE_EDITION_ID and not user_is_admin(current_user):
+            return redirect(url_for("main.dashboard"))
         if is_valid_edition(new_edition_id):
             old_edition_id = get_current_edition_id()
             set_current_edition_id(new_edition_id)
@@ -85,5 +91,5 @@ def choose_edition():
         return redirect(url_for("main.dashboard"))
 
     return render_template(
-        "choose_edition.html", editions=list_editions(), current_edition_id=get_current_edition_id(),
+        "choose_edition.html", editions=list_editions_for(current_user), current_edition_id=get_current_edition_id(),
     )

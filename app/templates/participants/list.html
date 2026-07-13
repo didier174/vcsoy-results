@@ -32,8 +32,8 @@
       <div class="table-row table-header">
         <div class="col col-check"></div>
         <div class="col col-part-name">Participants Name</div>
-        <div class="col col-part-cat">Category Name</div>
-        <div class="col col-part-code">Code</div>
+        <div class="col col-part-cat"><button type="button" class="table-sort-btn" data-sort-key="category">Category Name</button></div>
+        <div class="col col-part-code"><button type="button" class="table-sort-btn" data-sort-key="code">Code</button></div>
         <div class="col col-part-act">Act Ref.</div>
       </div>
 
@@ -42,7 +42,7 @@
       {% endif %}
 
       {% for p in participants %}
-        <div class="table-row">
+        <div class="table-row" data-category="{{ p.category_label() }}" data-code="{{ p.code }}">
           <div class="col col-check">
             <input type="checkbox" name="selected_ids" value="{{ p.id }}">
           </div>

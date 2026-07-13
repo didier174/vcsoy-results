@@ -19,7 +19,7 @@ from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
 from app.extensions import db
-from app.models import Category, Participant, TestResult, ActionLog, FileUpload
+from app.models import Category, Participant, TestResult, TestRecord, ActionLog, FileUpload
 from app.editions import get_current_edition_id, get_edition
 from app.menu import MENU_ITEMS
 from app.access_control import admin_required
@@ -123,6 +123,10 @@ def cancel_upload():
         flash("Merci de choisir un fichier à annuler.", "error")
         return redirect(url_for("results.upload_page"))
 
+    test_ids = [
+        t.id for t in TestResult.query.filter_by(edition_id=edition_id, source_filename=filename).all()
+    ]
+    TestRecord.query.filter(TestRecord.test_result_id.in_(test_ids)).delete(synchronize_session=False)
     deleted = TestResult.query.filter_by(edition_id=edition_id, source_filename=filename).delete()
     FileUpload.query.filter_by(edition_id=edition_id, filename=filename).delete()
     db.session.commit()

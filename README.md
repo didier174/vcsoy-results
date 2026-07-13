@@ -760,6 +760,45 @@ production :
 ALTER TABLE "user" ADD COLUMN default_edition_id VARCHAR(20);
 ```
 
+## Étape 16 — Corrections diverses et compléments
+
+**Correctifs :**
+- **Case « Act Réf. » (Gestion des participants)** : la bascule ne
+  fonctionnait plus depuis l'ajout de la protection CSRF (le fetch JS
+  n'envoyait pas le jeton, la requête échouait silencieusement en 400).
+  Corrigé.
+- **Facturation** : un participant coché « Act Réf. » ne peut plus être
+  sélectionné pour créer une facture (filtré dans la liste + contrôle
+  serveur).
+- **Suppression d'un participant/catégorie ou annulation d'un fichier de
+  résultat** provoquait une erreur interne dès qu'un test possédait un
+  record (`TestRecord`, clé étrangère non nulle vers `TestResult`) :
+  les records sont désormais supprimés avant les tests. Les factures et
+  rapports d'études déjà générés (instantanés autonomes) ne sont plus
+  bloquants : leur référence au participant est simplement détachée
+  (mise à `NULL`) plutôt que de provoquer une erreur ou d'être supprimés.
+
+**Éditions :**
+- L'**Édition Blanche** est désormais réservée aux administrateurs
+  (masquée du sélecteur d'édition et de l'« édition de démarrage » pour
+  les autres utilisateurs, avec contrôle serveur en complément). Un
+  collaborateur sans édition de démarrage assignée démarre maintenant
+  sur la première édition réelle (ESCDA 2027) plutôt que sur l'édition
+  blanche.
+
+**Rapport d'étude :**
+- Le bouton **« Modifier »** devient **« Charger »** : permet de charger
+  directement un fichier de rapport déjà prêt (.pptx) depuis le disque
+  local, qui apparaît alors dans la liste des rapports d'étude (sans
+  passer par un modèle ni des balises).
+- La liste des rapports d'étude affiche désormais l'**heure** en plus de
+  la date de création.
+
+**Gestion des participants :**
+- Les en-têtes **« Category Name »** et **« Code »** sont cliquables et
+  trient la liste par ordre croissant (même principe que le tri déjà en
+  place sur Compilation des résultats).
+
 ## Structure du projet
 
 ```

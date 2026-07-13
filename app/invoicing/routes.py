@@ -43,7 +43,16 @@ def _log(action, details=""):
 
 
 def _current_participants(edition_id):
-    return Participant.query.filter_by(edition_id=edition_id).order_by(Participant.participant_name).all()
+    """
+    Participants proposés à la création d'une facture : jamais un acteur
+    de référence (case « Act Réf. » cochée dans Gestion des participants),
+    qui ne doit pas être facturé.
+    """
+    return (
+        Participant.query.filter_by(edition_id=edition_id, active_ref=False)
+        .order_by(Participant.participant_name)
+        .all()
+    )
 
 
 def _participants_json(participants):
@@ -155,6 +164,12 @@ def _validate_and_build(form, edition_id, edition, require_participant):
             participant = Participant.query.get(int(participant_id)) if participant_id.isdigit() else None
             if not participant or participant.edition_id != edition_id:
                 errors.append("Participant introuvable pour cette édition.")
+                participant = None
+            elif participant.active_ref:
+                errors.append(
+                    f"« {participant.participant_name} » est un acteur de référence (Act Réf.) : "
+                    "il ne peut pas être facturé."
+                )
                 participant = None
     data["participant"] = participant
 

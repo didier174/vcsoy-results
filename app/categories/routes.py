@@ -19,7 +19,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from flask_login import login_required, current_user
 
 from app.extensions import db
-from app.models import Category, Participant, TestResult, ActionLog
+from app.models import Category, Participant, TestResult, TestRecord, Invoice, StudyReport, ActionLog
 from app.editions import get_current_edition_id, get_edition
 from app.access_control import user_is_admin
 from app.menu import MENU_ITEMS
@@ -159,7 +159,19 @@ def delete_rows():
                 ),
             })
 
+        test_ids = [t.id for t in TestResult.query.filter(TestResult.category_id.in_(ids)).all()]
+        TestRecord.query.filter(TestRecord.test_result_id.in_(test_ids)).delete(synchronize_session=False)
         TestResult.query.filter(TestResult.category_id.in_(ids)).delete(synchronize_session=False)
+
+        participant_ids = [p.id for p in Participant.query.filter(Participant.category_id.in_(ids)).all()]
+        # Instantanés autonomes : on détache la référence plutôt que de les
+        # supprimer, pour ne pas perdre l'historique des factures/rapports.
+        Invoice.query.filter(Invoice.participant_id.in_(participant_ids)).update(
+            {"participant_id": None}, synchronize_session=False
+        )
+        StudyReport.query.filter(StudyReport.participant_id.in_(participant_ids)).update(
+            {"participant_id": None}, synchronize_session=False
+        )
         Participant.query.filter(Participant.category_id.in_(ids)).delete(synchronize_session=False)
 
     count = len(to_delete)

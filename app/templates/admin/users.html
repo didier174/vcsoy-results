@@ -98,8 +98,8 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="user_id" value="{{ u.id }}">
             <select name="default_edition_id" onchange="this.form.submit()">
-              {% for e in editions %}
-                <option value="{{ e.id }}" {{ 'selected' if (u.default_edition_id or white_edition_id) == e.id else '' }}>{{ e.short_label }}</option>
+              {% for e in editions if e.id != white_edition_id %}
+                <option value="{{ e.id }}" {{ 'selected' if (u.default_edition_id or first_real_edition_id) == e.id else '' }}>{{ e.short_label }}</option>
               {% endfor %}
             </select>
           </form>
