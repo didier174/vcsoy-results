@@ -74,25 +74,48 @@ def _extract_json_array(text):
     return json.loads(text[start : end + 1])
 
 
+MAX_TOKENS = 16000
+MAX_CONTINUATIONS = 3
+
+
 def generate_scenarios(participant_name, website_url, problematiques_text, examples, num_to_generate=10):
     """
     Retourne une liste de dicts {type, contexte, question, reponse, url_source},
     de longueur <= num_to_generate. Lève ScenarioGenerationError en cas d'échec.
     """
     prompt = _build_prompt(participant_name, website_url, problematiques_text, examples, num_to_generate)
+    user_message = {"role": "user", "content": prompt}
 
     try:
         # timeout généreux : la recherche web + génération de 10 scénarios
         # peut prendre plusieurs minutes (voir --timeout gunicorn dans
         # render.yaml, qui doit rester supérieur à cette valeur).
         client = anthropic.Anthropic(timeout=480.0)
+        tools = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 10}]
+
         response = client.messages.create(
             model=MODEL,
-            max_tokens=8000,
+            max_tokens=MAX_TOKENS,
             thinking={"type": "adaptive"},
-            tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 10}],
-            messages=[{"role": "user", "content": prompt}],
+            output_config={"effort": "medium"},
+            tools=tools,
+            messages=[user_message],
         )
+
+        # La recherche web est traitée côté serveur ; si elle atteint sa
+        # limite interne d'itérations, l'API renvoie "pause_turn" et il faut
+        # renvoyer la conversation telle quelle pour qu'elle reprenne.
+        continuations = 0
+        while response.stop_reason == "pause_turn" and continuations < MAX_CONTINUATIONS:
+            response = client.messages.create(
+                model=MODEL,
+                max_tokens=MAX_TOKENS,
+                thinking={"type": "adaptive"},
+                output_config={"effort": "medium"},
+                tools=tools,
+                messages=[user_message, {"role": "assistant", "content": response.content}],
+            )
+            continuations += 1
     except anthropic.AuthenticationError as exc:
         raise ScenarioGenerationError("Clé API Anthropic manquante ou invalide (ANTHROPIC_API_KEY).") from exc
     except anthropic.RateLimitError as exc:
@@ -106,11 +129,17 @@ def generate_scenarios(participant_name, website_url, problematiques_text, examp
 
     if response.stop_reason == "refusal":
         raise ScenarioGenerationError("Le modèle a refusé de traiter cette demande.")
+    if response.stop_reason == "max_tokens":
+        raise ScenarioGenerationError(
+            "La réponse du modèle a été tronquée (limite de tokens atteinte avant la fin de la génération)."
+        )
 
     text_parts = [block.text for block in response.content if block.type == "text"]
     full_text = "\n".join(text_parts).strip()
     if not full_text:
-        raise ScenarioGenerationError("Le modèle n'a renvoyé aucun texte exploitable.")
+        raise ScenarioGenerationError(
+            f"Le modèle n'a renvoyé aucun texte exploitable (stop_reason : {response.stop_reason})."
+        )
 
     try:
         data = _extract_json_array(full_text)
