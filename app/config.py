@@ -38,6 +38,11 @@ class Config:
     GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
     GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
 
+    # Clé API Anthropic (Claude) : génération automatique des scénarios
+    # (voir app/scenarios/ai_generation.py). Le SDK Anthropic lit aussi
+    # directement ANTHROPIC_API_KEY depuis l'environnement.
+    ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+
     # Connexion simplifiée (simple adresse e-mail, sans Google) — pratique en
     # développement local. À mettre à "0" en production une fois la
     # connexion Google validée, pour ne garder qu'une seule porte d'entrée.

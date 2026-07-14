@@ -831,17 +831,48 @@ prochaine étape).
   que bloquée.
 - **Fichiers scénarios** : table des fichiers générés/chargés (nom, date
   et heure de création, bouton Télécharger), avec trois boutons :
-  - **Créer** : vérifie qu'au moins un modèle de chaque type existe,
-    sinon invite à en charger un ; sinon ouvre une popup pour choisir un
-    modèle de Book, un modèle de Problématiques et un participant. Génère
-    deux fichiers nommés `Book_scénario_<Participant>_<Édition>` et
-    `Problématiques_<Participant>_<Édition>` — pour l'instant une simple
-    copie du contenu des modèles sélectionnés (le contenu sera dérivé des
-    modèles dans une prochaine étape).
+  - **Générer un book** : vérifie qu'au moins un modèle de chaque type
+    existe, sinon invite à en charger un ; sinon ouvre une popup pour
+    choisir un modèle de Book, un modèle de Problématiques, un participant
+    et l'URL de son site web. Voir Étape 19 pour la génération réelle.
   - **Charger** : charge directement un fichier scénario déjà prêt depuis
     le disque local.
   - **Supprimer** (admin, sélection + confirmation) : supprime les
     fichiers scénarios sélectionnés.
+
+## Étape 19 — Génération de scénarios par IA (Claude Sonnet 5)
+
+Le bouton **« Générer un book »** génère désormais du contenu réel plutôt
+qu'une simple copie de modèle.
+
+- **Popup** : en plus des sélections de modèles et du participant, un
+  champ obligatoire demande l'**URL du site web du participant** (saisie à
+  chaque génération, non enregistrée sur la fiche participant).
+- **Fichiers idempotents** : à la génération, si les fichiers
+  `Book_scénario_<Participant>_<Édition>` et
+  `Problématiques_<Participant>_<Édition>` existent déjà pour ce
+  participant, ils sont **réutilisés et enrichis** plutôt que recréés (les
+  scénarios déjà validés par l'utilisateur sont conservés).
+- **Génération IA (Claude Sonnet 5, avec recherche web)** : le modèle
+  recherche sur le vrai site du participant (FAQ, informations générales),
+  s'inspire des problématiques listées sur la diapositive 2 du fichier
+  Problématiques, et apprend des scénarios déjà validés (colonne A = 1)
+  dans le Book pour générer **10 nouveaux scénarios** par clic.
+- **Book scénario (Excel, feuille « step 1 »)** : chaque nouveau scénario
+  remplit les colonnes A (validation, à 0), B (Entreprise), C (numéro,
+  incrémenté), D (Prospect/Client), E (contexte), F (question), G
+  (réponse). Les colonnes H à K et la feuille « Recap » ne sont jamais
+  touchées ; les lignes déjà validées (A = 1) ne sont jamais modifiées et
+  servent d'exemples pour les générations suivantes.
+- **Problématiques (PowerPoint)** : une diapositive est ajoutée par
+  scénario généré, indiquant son numéro et l'URL où l'information a été
+  trouvée (pas de capture d'écran).
+- Nécessite la variable d'environnement `ANTHROPIC_API_KEY` (voir
+  `.env.example`) ; en son absence, un message d'erreur explicite s'affiche
+  sans créer de fichier partiel.
+- « Générer les tests » (qui dupliquera les scénarios validés selon la
+  colonne K, pour générer par exemple des tests téléphoniques) reste à
+  spécifier dans une prochaine étape.
 
 ## Structure du projet
 
@@ -875,7 +906,10 @@ vcsoy_web/
 │   ├── reports/
 │   │   └── routes.py              # Rapport d'études : liste, modèle, suppression
 │   ├── scenarios/
-│   │   └── routes.py              # Générer des scénarios : modèles, création, suppression
+│   │   ├── routes.py              # Générer des scénarios : modèles, création, génération IA
+│   │   ├── ai_generation.py       # Appel Claude Sonnet 5 (recherche web + génération)
+│   │   ├── excel_utils.py         # Lecture/écriture du Book scénario (feuille "step 1")
+│   │   └── pptx_utils.py          # Lecture/écriture du fichier Problématiques
 │   ├── templates/                # gabarits HTML (Jinja2)
 │   └── static/
 │       ├── css/style.css

@@ -2,10 +2,13 @@
 Module « Gestion des scénarios » > « Générer des scénarios ».
 
 Modèles de scénarios (Book scénario / Problématiques) chargés par
-l'utilisateur, puis génération d'une paire de fichiers pour un
-participant (pour l'instant, une simple copie du modèle sélectionné ; le
-contenu sera dérivé du modèle dans une prochaine étape), chargement
-direct d'un fichier déjà prêt, téléchargement et suppression.
+l'utilisateur. Le bouton « Générer un book » crée (ou réutilise, s'ils
+existent déjà) les fichiers Book scénario et Problématiques d'un
+participant, puis appelle Claude Sonnet 5 (voir ai_generation.py) pour
+rechercher sur le vrai site web du participant et générer 10 nouveaux
+scénarios, ajoutés dans la feuille « step 1 » du Book (colonnes A-G ; H-K
+réservées à « Générer les tests ») et référencés dans le PowerPoint
+Problématiques (numéro + URL source).
 
 « Générer les tests » sera spécifié dans une prochaine étape.
 """
@@ -23,6 +26,7 @@ from app.extensions import db
 from app.models import ScenarioTemplate, ScenarioFile, Participant, ActionLog
 from app.editions import get_current_edition_id, get_edition
 from app.menu import MENU_ITEMS
+from app.scenarios import ai_generation, excel_utils, pptx_utils
 
 scenarios_bp = Blueprint("scenarios", __name__, url_prefix="/scenarios")
 
@@ -134,6 +138,9 @@ def delete_templates():
     return redirect(url_for("scenarios.generate_scenarios"))
 
 
+SCENARIOS_PER_BATCH = 10
+
+
 @scenarios_bp.route("/new", methods=["POST"])
 @login_required
 def create_scenario_files():
@@ -142,9 +149,19 @@ def create_scenario_files():
     book_template_id = request.form.get("book_template_id", "").strip()
     problematiques_template_id = request.form.get("problematiques_template_id", "").strip()
     participant_id = request.form.get("participant_id", "").strip()
+    website_url = request.form.get("website_url", "").strip()
 
-    if not book_template_id.isdigit() or not problematiques_template_id.isdigit() or not participant_id.isdigit():
-        flash("Merci de choisir un modèle de Book scénario, un modèle de Problématiques et un participant.", "error")
+    if (
+        not book_template_id.isdigit()
+        or not problematiques_template_id.isdigit()
+        or not participant_id.isdigit()
+        or not website_url
+    ):
+        flash(
+            "Merci de choisir un modèle de Book scénario, un modèle de Problématiques, "
+            "un participant et de saisir l'URL de son site web.",
+            "error",
+        )
         return redirect(url_for("scenarios.generate_scenarios"))
 
     book_template = ScenarioTemplate.query.filter_by(
@@ -160,34 +177,78 @@ def create_scenario_files():
         return redirect(url_for("scenarios.generate_scenarios"))
 
     base_suffix = _sanitize_filename(f"{participant.participant_name}_{edition['short_label']}").replace(" ", "_")
-
-    book_ext = os.path.splitext(book_template.filename or "")[1] or ""
-    problematiques_ext = os.path.splitext(problematiques_template.filename or "")[1] or ""
-
     book_name = f"Book_scénario_{base_suffix}"
     problematiques_name = f"Problématiques_{base_suffix}"
 
-    db.session.add(ScenarioFile(
-        edition_id=edition_id, kind=ScenarioTemplate.KIND_BOOK, name=book_name,
-        participant_id=participant.id, source_template_id=book_template.id,
-        filename=f"{book_name}{book_ext}", content_type=book_template.content_type,
-        file_data=book_template.file_data, file_size=book_template.file_size,
-        created_by_id=current_user.id,
-    ))
-    db.session.add(ScenarioFile(
-        edition_id=edition_id, kind=ScenarioTemplate.KIND_PROBLEMATIQUES, name=problematiques_name,
-        participant_id=participant.id, source_template_id=problematiques_template.id,
-        filename=f"{problematiques_name}{problematiques_ext}", content_type=problematiques_template.content_type,
-        file_data=problematiques_template.file_data, file_size=problematiques_template.file_size,
-        created_by_id=current_user.id,
-    ))
+    book_file = ScenarioFile.query.filter_by(
+        edition_id=edition_id, participant_id=participant.id, name=book_name
+    ).first()
+    if not book_file:
+        book_ext = os.path.splitext(book_template.filename or "")[1] or ""
+        book_file = ScenarioFile(
+            edition_id=edition_id, kind=ScenarioTemplate.KIND_BOOK, name=book_name,
+            participant_id=participant.id, source_template_id=book_template.id,
+            filename=f"{book_name}{book_ext}", content_type=book_template.content_type,
+            file_data=book_template.file_data, file_size=book_template.file_size,
+            created_by_id=current_user.id,
+        )
+        db.session.add(book_file)
+
+    problematiques_file = ScenarioFile.query.filter_by(
+        edition_id=edition_id, participant_id=participant.id, name=problematiques_name
+    ).first()
+    if not problematiques_file:
+        problematiques_ext = os.path.splitext(problematiques_template.filename or "")[1] or ""
+        problematiques_file = ScenarioFile(
+            edition_id=edition_id, kind=ScenarioTemplate.KIND_PROBLEMATIQUES, name=problematiques_name,
+            participant_id=participant.id, source_template_id=problematiques_template.id,
+            filename=f"{problematiques_name}{problematiques_ext}", content_type=problematiques_template.content_type,
+            file_data=problematiques_template.file_data, file_size=problematiques_template.file_size,
+            created_by_id=current_user.id,
+        )
+        db.session.add(problematiques_file)
+
+    db.session.flush()
+
+    try:
+        validated_examples, _next_row, _last_num = excel_utils.load_book_state(book_file.file_data)
+        problematiques_text = pptx_utils.read_problematiques_text(problematiques_file.file_data)
+
+        scenarios = ai_generation.generate_scenarios(
+            participant_name=participant.participant_name,
+            website_url=website_url,
+            problematiques_text=problematiques_text,
+            examples=validated_examples,
+            num_to_generate=SCENARIOS_PER_BATCH,
+        )
+
+        new_book_data, assigned_numbers = excel_utils.append_scenarios(
+            book_file.file_data, participant.participant_name, scenarios
+        )
+        book_file.file_data = new_book_data
+        book_file.file_size = len(new_book_data)
+
+        new_pptx_data = pptx_utils.append_scenario_slides(
+            problematiques_file.file_data, list(zip(assigned_numbers, scenarios))
+        )
+        problematiques_file.file_data = new_pptx_data
+        problematiques_file.file_size = len(new_pptx_data)
+    except (excel_utils.BookWorkbookError, ai_generation.ScenarioGenerationError) as exc:
+        db.session.rollback()
+        flash(f"Génération impossible : {exc}", "error")
+        return redirect(url_for("scenarios.generate_scenarios"))
+
     db.session.commit()
 
     _log(
-        "Création de fichiers scénarios",
-        details=f"{book_name} + {problematiques_name} (édition {edition_id})",
+        "Génération de scénarios par IA",
+        details=f"{len(scenarios)} scénario(s) pour {participant.participant_name} (édition {edition_id})",
     )
-    flash(f"Fichiers « {book_name} » et « {problematiques_name} » créés avec succès.", "success")
+    flash(
+        f"{len(scenarios)} scénario(s) généré(s) pour « {participant.participant_name} » "
+        f"dans « {book_name} » et « {problematiques_name} ».",
+        "success",
+    )
     return redirect(url_for("scenarios.generate_scenarios"))
 
 

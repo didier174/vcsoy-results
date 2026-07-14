@@ -233,6 +233,14 @@
           {% endfor %}
         </select>
       </label>
+      <label class="dialog-input-label">
+        URL du site web du participant
+        <input type="url" name="website_url" id="create-scenario-website-url"
+               placeholder="https://www.exemple.com" required>
+      </label>
+      <p class="muted" style="font-size: 12px;">
+        L'IA recherchera sur ce site pour générer 10 nouveaux scénarios de client mystère.
+      </p>
       <div class="dialog-actions">
         <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Annuler</button>
         <button type="submit" class="btn btn-primary" id="create-scenario-submit" disabled>Créer</button>
