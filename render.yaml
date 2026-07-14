@@ -4,9 +4,10 @@ services:
     env: python
     plan: free
     buildCommand: "pip install -r requirements.txt"
-    # --timeout 180 : la génération de scénarios par IA (recherche web +
-    # Claude Sonnet 5) peut dépasser les 30 secondes par défaut de gunicorn.
-    startCommand: "gunicorn wsgi:app --timeout 180"
+    # --timeout 600 : la génération de scénarios par IA (recherche web +
+    # Claude Sonnet 5) peut prendre plusieurs minutes ; bien au-delà des
+    # 30 secondes par défaut de gunicorn.
+    startCommand: "gunicorn wsgi:app --timeout 600"
     envVars:
       - key: SECRET_KEY
         generateValue: true

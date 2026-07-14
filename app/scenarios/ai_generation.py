@@ -82,12 +82,15 @@ def generate_scenarios(participant_name, website_url, problematiques_text, examp
     prompt = _build_prompt(participant_name, website_url, problematiques_text, examples, num_to_generate)
 
     try:
-        client = anthropic.Anthropic()
+        # timeout généreux : la recherche web + génération de 10 scénarios
+        # peut prendre plusieurs minutes (voir --timeout gunicorn dans
+        # render.yaml, qui doit rester supérieur à cette valeur).
+        client = anthropic.Anthropic(timeout=480.0)
         response = client.messages.create(
             model=MODEL,
             max_tokens=8000,
             thinking={"type": "adaptive"},
-            tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 15}],
+            tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 10}],
             messages=[{"role": "user", "content": prompt}],
         )
     except anthropic.AuthenticationError as exc:
