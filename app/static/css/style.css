@@ -322,7 +322,19 @@ a { text-decoration: none; color: inherit; }
 .col-report-dl { flex: 0 0 120px; }
 .col-scenario-tpl-name { flex: 1 1 45%; }
 .col-scenario-tpl-kind { flex: 0 0 160px; }
+.col-scenario-tpl-lang { flex: 0 0 100px; }
 .col-scenario-tpl-date { flex: 0 0 140px; }
+
+.table-card-scroll {
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.table-card-scroll .table-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
 
 .table-row input[type="text"] {
   width: 100%;

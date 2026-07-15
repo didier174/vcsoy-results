@@ -945,6 +945,37 @@ ALTER TABLE scenario_generation_job ADD COLUMN IF NOT EXISTS web_search_count IN
 ALTER TABLE scenario_generation_job ADD COLUMN IF NOT EXISTS estimated_cost_usd DOUBLE PRECISION;
 ```
 
+## Étape 23 — Retours d'usage : langue, dates, indicateur "en cours"
+
+Suite à deux vrais runs sur un participant sans exemple :
+
+- **Indicateur "en cours" fiable** : la page « Générer des scénarios » se
+  rafraîchit automatiquement (toutes les 20 s) tant qu'une génération
+  tourne, pour que le message « Génération en cours pour X (lancée à
+  HH:MM) » reste visible sans avoir à actualiser manuellement.
+- **Date de dernière mise à jour** : `ScenarioFile.updated_at` (mis à jour
+  automatiquement par SQLAlchemy à chaque modification du fichier — ajout
+  de scénarios ou rechargement manuel) remplace la date de création dans
+  le tableau « Fichiers scénarios », pour suivre les versions. Le tableau
+  est trié par mise à jour la plus récente et défile verticalement
+  (`table-card-scroll`) une fois qu'il contient beaucoup de lignes.
+- **Langue (Français/English)** : les modèles (Book scénario,
+  Problématiques) précisent désormais leur langue au chargement. La popup
+  « Générer un book » demande la langue des scénarios à générer ; si les
+  modèles sélectionnés ne correspondent pas à cette langue, ou si le
+  fichier existant du participant est déjà dans une autre langue,
+  génération refusée avec un message explicite (pas de mélange de langues
+  dans un même fichier). Le modèle rédige tout le contenu généré dans la
+  langue demandée.
+
+**Migration requise** (nouvelles colonnes) :
+
+```sql
+ALTER TABLE scenario_template ADD COLUMN IF NOT EXISTS language VARCHAR(5) DEFAULT 'fr';
+ALTER TABLE scenario_file ADD COLUMN IF NOT EXISTS language VARCHAR(5);
+ALTER TABLE scenario_file ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;
+```
+
 ## Structure du projet
 
 ```

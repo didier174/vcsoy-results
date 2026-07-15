@@ -78,12 +78,14 @@
       <div class="table-row table-header">
         <div class="col col-scenario-tpl-name">Fichier</div>
         <div class="col col-scenario-tpl-kind">Type</div>
+        <div class="col col-scenario-tpl-lang">Langue</div>
         <div class="col col-scenario-tpl-date">Chargé le</div>
       </div>
       {% for t in templates %}
         <div class="table-row">
           <div class="col col-scenario-tpl-name">{{ t.filename }}</div>
           <div class="col col-scenario-tpl-kind">{{ kind_labels.get(t.kind, t.kind) }}</div>
+          <div class="col col-scenario-tpl-lang">{{ language_labels.get(t.language, '—') }}</div>
           <div class="col col-scenario-tpl-date">{{ t.uploaded_at | local_dt if t.uploaded_at else '' }}</div>
         </div>
       {% endfor %}
@@ -93,11 +95,12 @@
   <h2 class="detail-section-title">Fichiers scénarios</h2>
   <form method="post" id="scenario-files-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="table-card">
+    <div class="table-card table-card-scroll">
       <div class="table-row table-header">
         <div class="col col-check"></div>
         <div class="col col-report-name">Nom du fichier</div>
-        <div class="col col-report-date">Date de création</div>
+        <div class="col col-scenario-tpl-lang">Langue</div>
+        <div class="col col-report-date">Dernière mise à jour</div>
         <div class="col col-report-dl"></div>
       </div>
 
@@ -111,7 +114,8 @@
             <input type="checkbox" name="selected_ids" value="{{ f.id }}" class="scenario-file-checkbox">
           </div>
           <div class="col col-report-name">{{ f.name }}</div>
-          <div class="col col-report-date">{{ f.created_at | local_dt if f.created_at else '' }}</div>
+          <div class="col col-scenario-tpl-lang">{{ language_labels.get(f.language, '—') }}</div>
+          <div class="col col-report-date">{{ f.updated_at | local_dt if f.updated_at else (f.created_at | local_dt if f.created_at else '') }}</div>
           <div class="col col-report-dl">
             <a href="{{ url_for('scenarios.download_scenario_file', file_id=f.id) }}" class="btn btn-secondary btn-compact">Télécharger</a>
           </div>
@@ -189,6 +193,14 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="kind" value="book">
     <input type="file" name="template_file" required>
+    <label class="dialog-input-label">
+      Langue du modèle
+      <select name="language" required>
+        <option value="">— Choisir —</option>
+        <option value="fr">Français</option>
+        <option value="en">English</option>
+      </select>
+    </label>
     <div class="dialog-actions">
       <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Fermer</button>
       <button type="submit" class="btn btn-primary">Charger</button>
@@ -206,6 +218,14 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="kind" value="problematiques">
     <input type="file" name="template_file" required>
+    <label class="dialog-input-label">
+      Langue du modèle
+      <select name="language" required>
+        <option value="">— Choisir —</option>
+        <option value="fr">Français</option>
+        <option value="en">English</option>
+      </select>
+    </label>
     <div class="dialog-actions">
       <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Fermer</button>
       <button type="submit" class="btn btn-primary">Charger</button>
@@ -260,7 +280,7 @@
         <select name="book_template_id" id="create-scenario-book" required>
           <option value="">— Choisir —</option>
           {% for t in book_templates %}
-            <option value="{{ t.id }}">{{ t.filename }}</option>
+            <option value="{{ t.id }}">{{ t.filename }} ({{ language_labels.get(t.language, '—') }})</option>
           {% endfor %}
         </select>
       </label>
@@ -269,7 +289,7 @@
         <select name="problematiques_template_id" id="create-scenario-problematiques" required>
           <option value="">— Choisir —</option>
           {% for t in problematiques_templates %}
-            <option value="{{ t.id }}">{{ t.filename }}</option>
+            <option value="{{ t.id }}">{{ t.filename }} ({{ language_labels.get(t.language, '—') }})</option>
           {% endfor %}
         </select>
       </label>
@@ -283,14 +303,24 @@
         </select>
       </label>
       <label class="dialog-input-label">
+        Langue des scénarios à générer
+        <select name="language" id="create-scenario-language" required>
+          <option value="">— Choisir —</option>
+          <option value="fr">Français</option>
+          <option value="en">English</option>
+        </select>
+      </label>
+      <label class="dialog-input-label">
         URL du site web du participant
         <input type="url" name="website_url" id="create-scenario-website-url"
                placeholder="https://www.exemple.com" required>
       </label>
       <p class="muted" style="font-size: 12px;">
-        L'IA recherchera sur ce site pour générer 10 nouveaux scénarios de client mystère.
-        La génération peut prendre plusieurs minutes et continue en arrière-plan : vous pouvez
-        fermer cette fenêtre et actualiser la page pour suivre l'avancement.
+        L'IA recherchera sur ce site pour générer 10 nouveaux scénarios de client mystère,
+        rédigés dans la langue choisie. La langue des modèles sélectionnés doit correspondre à
+        cette langue (sinon un message d'erreur s'affichera). La génération peut prendre
+        plusieurs minutes et continue en arrière-plan : vous pouvez fermer cette fenêtre, la
+        page se rafraîchit automatiquement pour suivre l'avancement.
       </p>
       <div class="dialog-actions">
         <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Annuler</button>
@@ -301,4 +331,11 @@
 </dialog>
 
 <script src="{{ url_for('static', filename='js/scenarios.js') }}"></script>
+{% if running_jobs %}
+  <script>
+    // Une génération tourne en arrière-plan : actualise automatiquement
+    // pour suivre l'avancement sans que l'utilisateur doive y penser.
+    setTimeout(function () { window.location.reload(); }, 20000);
+  </script>
+{% endif %}
 {% endblock %}

@@ -56,7 +56,10 @@ def _finalize_usage(totals):
     return totals
 
 
-def _build_prompt(participant_name, website_url, problematiques_text, examples, num_to_generate):
+LANGUAGE_LABELS = {"fr": "français", "en": "anglais"}
+
+
+def _build_prompt(participant_name, website_url, problematiques_text, examples, num_to_generate, language):
     if examples:
         examples_lines = []
         for ex in examples:
@@ -69,6 +72,8 @@ def _build_prompt(participant_name, website_url, problematiques_text, examples, 
         examples_text = "\n".join(examples_lines)
     else:
         examples_text = "(aucun scénario validé pour l'instant pour ce participant)"
+
+    language_label = LANGUAGE_LABELS.get(language, "français")
 
     return f"""Tu prépares des scénarios de client mystère pour une étude de qualité de
 service à la clientèle (ESCDA Canada).
@@ -88,6 +93,10 @@ participant (FAQ, pages d'information générale, conditions, etc.) et trouver d
 vraies informations en lien avec les problématiques ci-dessus. À partir de ces
 informations, génère {num_to_generate} NOUVEAUX scénarios de client mystère, distincts
 des scénarios déjà validés.
+
+IMPORTANT : rédige TOUT le contenu de chaque scénario (contexte, question, réponse)
+en {language_label}, y compris si les informations trouvées sur le site sont dans une
+autre langue (traduis-les en {language_label}).
 
 Pour chaque scénario :
 - "type" : "Prospect" ou "Client" selon la situation
@@ -125,7 +134,9 @@ def _call_claude(client, messages):
     )
 
 
-def generate_scenarios(participant_name, website_url, problematiques_text, examples, num_to_generate=10):
+def generate_scenarios(
+    participant_name, website_url, problematiques_text, examples, num_to_generate=10, language="fr"
+):
     """
     Retourne (scenarios, usage) : scenarios est une liste de dicts
     {type, contexte, question, reponse, url_source} (longueur <= num_to_generate) ;
@@ -137,7 +148,7 @@ def generate_scenarios(participant_name, website_url, problematiques_text, examp
     _run_generation) : peut prendre plusieurs minutes sans que cela ne bloque
     de requête web.
     """
-    prompt = _build_prompt(participant_name, website_url, problematiques_text, examples, num_to_generate)
+    prompt = _build_prompt(participant_name, website_url, problematiques_text, examples, num_to_generate, language)
     user_message = {"role": "user", "content": prompt}
     usage = _new_usage_totals()
 

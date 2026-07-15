@@ -12,21 +12,26 @@ updateScenarioFileActionButtons();
 
 // Popup "Créer des fichiers scénarios" : le bouton "Créer" ne devient
 // actif que lorsqu'un modèle de Book, un modèle de Problématiques, un
-// participant ET l'URL du site web ont été renseignés.
+// participant, une langue ET l'URL du site web ont été renseignés.
 function updateCreateScenarioSubmit() {
   const bookSel = document.getElementById("create-scenario-book");
   const problematiquesSel = document.getElementById("create-scenario-problematiques");
   const participantSel = document.getElementById("create-scenario-participant");
+  const languageSel = document.getElementById("create-scenario-language");
   const websiteUrlInput = document.getElementById("create-scenario-website-url");
   const submitBtn = document.getElementById("create-scenario-submit");
-  if (!bookSel || !problematiquesSel || !participantSel || !websiteUrlInput || !submitBtn) return;
-  submitBtn.disabled = !bookSel.value || !problematiquesSel.value || !participantSel.value || !websiteUrlInput.value;
+  if (!bookSel || !problematiquesSel || !participantSel || !languageSel || !websiteUrlInput || !submitBtn) return;
+  submitBtn.disabled = (
+    !bookSel.value || !problematiquesSel.value || !participantSel.value
+    || !languageSel.value || !websiteUrlInput.value
+  );
 }
 
 [
   "create-scenario-book",
   "create-scenario-problematiques",
   "create-scenario-participant",
+  "create-scenario-language",
   "create-scenario-website-url",
 ].forEach((id) => {
   const el = document.getElementById(id);

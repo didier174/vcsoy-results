@@ -326,9 +326,16 @@ class ScenarioTemplate(db.Model):
     KIND_BOOK = "book"
     KIND_PROBLEMATIQUES = "problematiques"
 
+    LANG_FR = "fr"
+    LANG_EN = "en"
+
     id = db.Column(db.Integer, primary_key=True)
     edition_id = db.Column(db.String(20), nullable=False, index=True)
     kind = db.Column(db.String(20), nullable=False)
+    # Langue du contenu du modèle (fr/en) : doit correspondre à la langue
+    # demandée dans « Générer un book » (voir app/scenarios/routes.py).
+    # Nul pour les modèles chargés avant l'ajout de ce champ.
+    language = db.Column(db.String(5), nullable=True, default=LANG_FR)
 
     filename = db.Column(db.String(255))
     content_type = db.Column(db.String(100))
@@ -355,6 +362,11 @@ class ScenarioFile(db.Model):
     kind = db.Column(db.String(20), nullable=True)
 
     name = db.Column(db.String(255), nullable=False)
+    # Langue du contenu déjà présent dans ce fichier (fr/en) : fixée dès la
+    # première génération réussie, pour empêcher de mélanger les langues
+    # dans un même fichier (voir app/scenarios/routes.py). Nulle tant
+    # qu'aucune génération IA n'a encore rempli ce fichier.
+    language = db.Column(db.String(5), nullable=True)
 
     participant_id = db.Column(db.Integer, db.ForeignKey("participant.id"), nullable=True)
     source_template_id = db.Column(db.Integer, db.ForeignKey("scenario_template.id"), nullable=True)
@@ -366,6 +378,10 @@ class ScenarioFile(db.Model):
 
     created_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # Mise à jour automatiquement (SQLAlchemy onupdate) à chaque
+    # modification du fichier (nouveaux scénarios ajoutés, rechargement
+    # manuel) : permet de suivre la version la plus récente.
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     participant = db.relationship("Participant")
     source_template = db.relationship("ScenarioTemplate")

@@ -44,6 +44,11 @@ KIND_LABELS = {
     ScenarioTemplate.KIND_PROBLEMATIQUES: "Problématiques",
 }
 
+LANGUAGE_LABELS = {
+    ScenarioTemplate.LANG_FR: "Français",
+    ScenarioTemplate.LANG_EN: "English",
+}
+
 FILENAME_UNSAFE_RE = re.compile(r'[\\/:*?"<>|]')
 
 
@@ -86,7 +91,7 @@ def generate_scenarios():
     templates = (
         ScenarioTemplate.query.filter_by(edition_id=edition_id).order_by(ScenarioTemplate.uploaded_at.desc()).all()
     )
-    files = ScenarioFile.query.filter_by(edition_id=edition_id).order_by(ScenarioFile.created_at.desc()).all()
+    files = ScenarioFile.query.filter_by(edition_id=edition_id).order_by(ScenarioFile.updated_at.desc()).all()
     participants = Participant.query.filter_by(edition_id=edition_id).order_by(Participant.participant_name).all()
     book_templates = [t for t in templates if t.kind == ScenarioTemplate.KIND_BOOK]
     problematiques_templates = [t for t in templates if t.kind == ScenarioTemplate.KIND_PROBLEMATIQUES]
@@ -110,7 +115,7 @@ def generate_scenarios():
     return render_template(
         "scenarios/generate.html", edition=edition, templates=templates, files=files, participants=participants,
         book_templates=book_templates, problematiques_templates=problematiques_templates, kind_labels=KIND_LABELS,
-        active_item=ACTIVE_ITEM_GENERATE, menu_items=MENU_ITEMS,
+        language_labels=LANGUAGE_LABELS, active_item=ACTIVE_ITEM_GENERATE, menu_items=MENU_ITEMS,
         running_jobs=running_jobs, recent_jobs=recent_jobs,
     )
 
@@ -124,6 +129,11 @@ def upload_template():
         flash("Type de modèle invalide.", "error")
         return redirect(url_for("scenarios.generate_scenarios"))
 
+    language = request.form.get("language", "").strip()
+    if language not in LANGUAGE_LABELS:
+        flash("Merci de préciser la langue du modèle (Français ou English).", "error")
+        return redirect(url_for("scenarios.generate_scenarios"))
+
     file = request.files.get("template_file")
     if not file or not file.filename:
         flash("Merci de choisir un fichier avant de cliquer sur « Charger ».", "error")
@@ -134,7 +144,7 @@ def upload_template():
     content_type = file.content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
 
     db.session.add(ScenarioTemplate(
-        edition_id=edition_id, kind=kind, filename=filename, content_type=content_type,
+        edition_id=edition_id, kind=kind, language=language, filename=filename, content_type=content_type,
         file_data=content, file_size=len(content), uploaded_by_id=current_user.id,
     ))
     db.session.commit()
@@ -185,16 +195,18 @@ def create_scenario_files():
     problematiques_template_id = request.form.get("problematiques_template_id", "").strip()
     participant_id = request.form.get("participant_id", "").strip()
     website_url = request.form.get("website_url", "").strip()
+    language = request.form.get("language", "").strip()
 
     if (
         not book_template_id.isdigit()
         or not problematiques_template_id.isdigit()
         or not participant_id.isdigit()
         or not website_url
+        or language not in LANGUAGE_LABELS
     ):
         flash(
             "Merci de choisir un modèle de Book scénario, un modèle de Problématiques, "
-            "un participant et de saisir l'URL de son site web.",
+            "un participant, une langue et de saisir l'URL de son site web.",
             "error",
         )
         return redirect(url_for("scenarios.generate_scenarios"))
@@ -210,6 +222,16 @@ def create_scenario_files():
     if not book_template or not problematiques_template or not participant:
         flash("Modèle ou participant introuvable pour cette édition.", "error")
         return redirect(url_for("scenarios.generate_scenarios"))
+
+    for template in (book_template, problematiques_template):
+        if template.language and template.language != language:
+            flash(
+                f"Le modèle « {template.filename} » est en {LANGUAGE_LABELS.get(template.language, template.language)}, "
+                f"pas en {LANGUAGE_LABELS[language]}. Chargez un modèle dans la bonne langue ou changez la langue "
+                "demandée, puis relancez avec « Générer un book ».",
+                "error",
+            )
+            return redirect(url_for("scenarios.generate_scenarios"))
 
     already_running = ScenarioGenerationJob.query.filter_by(
         edition_id=edition_id, participant_id=participant.id, status=ScenarioGenerationJob.STATUS_RUNNING
@@ -252,6 +274,23 @@ def create_scenario_files():
         )
         db.session.add(problematiques_file)
 
+    # Un fichier déjà enrichi par une génération précédente porte déjà une
+    # langue : impossible de continuer dans une autre langue (mélange dans
+    # le même fichier). Les fichiers neufs n'ont pas encore de langue et la
+    # reçoivent maintenant.
+    for scenario_file in (book_file, problematiques_file):
+        if scenario_file.language and scenario_file.language != language:
+            flash(
+                f"Le fichier « {scenario_file.name} » existant est déjà en "
+                f"{LANGUAGE_LABELS.get(scenario_file.language, scenario_file.language)}, incompatible avec "
+                f"{LANGUAGE_LABELS[language]}. Relancez avec « Générer un book » en choisissant la bonne langue.",
+                "error",
+            )
+            return redirect(url_for("scenarios.generate_scenarios"))
+    for scenario_file in (book_file, problematiques_file):
+        if not scenario_file.language:
+            scenario_file.language = language
+
     job = ScenarioGenerationJob(
         edition_id=edition_id, participant_id=participant.id, status=ScenarioGenerationJob.STATUS_RUNNING,
         requested_by_id=current_user.id, requested_by_email=current_user.email,
@@ -266,7 +305,7 @@ def create_scenario_files():
     app_obj = current_app._get_current_object()
     threading.Thread(
         target=_run_generation,
-        args=(app_obj, job.id, book_file.id, problematiques_file.id, website_url),
+        args=(app_obj, job.id, book_file.id, problematiques_file.id, website_url, language),
         daemon=True,
     ).start()
 
@@ -290,7 +329,7 @@ def _apply_usage_to_job(job, usage):
     job.estimated_cost_usd = usage.get("estimated_cost_usd")
 
 
-def _run_generation(app, job_id, book_file_id, problematiques_file_id, website_url):
+def _run_generation(app, job_id, book_file_id, problematiques_file_id, website_url, language):
     """
     Exécutée dans un thread séparé (voir create_scenario_files) : appelle
     l'IA puis met à jour les fichiers et le job de suivi. Ne doit jamais
@@ -316,6 +355,7 @@ def _run_generation(app, job_id, book_file_id, problematiques_file_id, website_u
                 problematiques_text=problematiques_text,
                 examples=validated_examples,
                 num_to_generate=SCENARIOS_PER_BATCH,
+                language=language,
             )
 
             new_book_data, assigned_numbers = excel_utils.append_scenarios(
