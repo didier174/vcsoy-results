@@ -19,7 +19,7 @@
       {% for job in running_jobs %}
         <p class="results-summary-line">
           Génération en cours pour « {{ job.participant.participant_name if job.participant else '?' }} »
-          (lancée à {{ job.started_at.strftime('%H:%M') }}) — actualisez cette page pour suivre l'avancement.
+          (lancée à {{ job.started_at | local_dt('%H:%M') }}) — actualisez cette page pour suivre l'avancement.
         </p>
       {% endfor %}
     </div>
@@ -32,13 +32,13 @@
           <p class="flash flash-success">
             Génération terminée pour « {{ job.participant.participant_name if job.participant else '?' }} » :
             {{ job.scenarios_generated }} scénario(s) généré(s)
-            ({{ job.finished_at.strftime('%d/%m/%Y %H:%M') if job.finished_at else '' }}).
+            ({{ job.finished_at | local_dt if job.finished_at else '' }}).
           </p>
         {% else %}
           <p class="flash flash-error">
             Génération échouée pour « {{ job.participant.participant_name if job.participant else '?' }} » :
             {{ job.error_message }}
-            ({{ job.finished_at.strftime('%d/%m/%Y %H:%M') if job.finished_at else '' }}).
+            ({{ job.finished_at | local_dt if job.finished_at else '' }}).
           </p>
         {% endif %}
       {% endfor %}
@@ -77,7 +77,7 @@
         <div class="table-row">
           <div class="col col-scenario-tpl-name">{{ t.filename }}</div>
           <div class="col col-scenario-tpl-kind">{{ kind_labels.get(t.kind, t.kind) }}</div>
-          <div class="col col-scenario-tpl-date">{{ t.uploaded_at.strftime('%d/%m/%Y %H:%M') if t.uploaded_at else '' }}</div>
+          <div class="col col-scenario-tpl-date">{{ t.uploaded_at | local_dt if t.uploaded_at else '' }}</div>
         </div>
       {% endfor %}
     </div>
@@ -104,7 +104,7 @@
             <input type="checkbox" name="selected_ids" value="{{ f.id }}" class="scenario-file-checkbox">
           </div>
           <div class="col col-report-name">{{ f.name }}</div>
-          <div class="col col-report-date">{{ f.created_at.strftime('%d/%m/%Y %H:%M') if f.created_at else '' }}</div>
+          <div class="col col-report-date">{{ f.created_at | local_dt if f.created_at else '' }}</div>
           <div class="col col-report-dl">
             <a href="{{ url_for('scenarios.download_scenario_file', file_id=f.id) }}" class="btn btn-secondary btn-compact">Télécharger</a>
           </div>
@@ -151,7 +151,7 @@
                 <td><input type="checkbox" name="template_ids" value="{{ t.id }}"></td>
                 <td>{{ t.filename }}</td>
                 <td>{{ kind_labels.get(t.kind, t.kind) }}</td>
-                <td>{{ t.uploaded_at.strftime('%d/%m/%Y %H:%M') if t.uploaded_at else '' }}</td>
+                <td>{{ t.uploaded_at | local_dt if t.uploaded_at else '' }}</td>
               </tr>
             {% endfor %}
           </tbody>

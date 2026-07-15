@@ -37,7 +37,7 @@
         <div class="uploaded-file-row">
           <span class="uploaded-file-name">{{ t.filename }}</span>
           <span class="uploaded-file-meta">
-            {{ t.uploaded_at.strftime('%d/%m/%Y %H:%M') if t.uploaded_at else '' }}
+            {{ t.uploaded_at | local_dt if t.uploaded_at else '' }}
             {% if t.uploaded_by %}· {{ t.uploaded_by.email }}{% endif %}
           </span>
         </div>
@@ -66,7 +66,7 @@
             <input type="checkbox" name="selected_ids" value="{{ r.id }}" class="report-checkbox">
           </div>
           <div class="col col-report-name">{{ r.name }}</div>
-          <div class="col col-report-date">{{ r.created_at.strftime('%d/%m/%Y %H:%M') if r.created_at else '' }}</div>
+          <div class="col col-report-date">{{ r.created_at | local_dt if r.created_at else '' }}</div>
           <div class="col col-report-dl">
             <a href="{{ url_for('reports.download_report', report_id=r.id) }}" class="btn btn-secondary btn-compact">Télécharger</a>
           </div>
@@ -128,7 +128,7 @@
               <tr>
                 <td><input type="checkbox" name="template_ids" value="{{ t.id }}"></td>
                 <td>{{ t.filename }}</td>
-                <td>{{ t.uploaded_at.strftime('%d/%m/%Y %H:%M') if t.uploaded_at else '' }}</td>
+                <td>{{ t.uploaded_at | local_dt if t.uploaded_at else '' }}</td>
               </tr>
             {% endfor %}
           </tbody>
@@ -181,7 +181,7 @@
         <select name="template_id" id="create-report-template" required>
           <option value="">— Choisir —</option>
           {% for t in templates %}
-            <option value="{{ t.id }}">{{ t.filename }}{% if t.uploaded_at %} ({{ t.uploaded_at.strftime('%d/%m/%Y') }}){% endif %}</option>
+            <option value="{{ t.id }}">{{ t.filename }}{% if t.uploaded_at %} ({{ t.uploaded_at | local_dt('%d/%m/%Y') }}){% endif %}</option>
           {% endfor %}
         </select>
       </label>

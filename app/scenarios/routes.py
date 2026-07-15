@@ -31,6 +31,7 @@ from app.extensions import db
 from app.models import ScenarioTemplate, ScenarioFile, ScenarioGenerationJob, Participant, ActionLog
 from app.editions import get_current_edition_id, get_edition
 from app.menu import MENU_ITEMS
+from app.timezone_utils import format_local
 from app.scenarios import ai_generation, excel_utils, pptx_utils
 
 scenarios_bp = Blueprint("scenarios", __name__, url_prefix="/scenarios")
@@ -216,7 +217,7 @@ def create_scenario_files():
     if already_running:
         flash(
             f"Une génération est déjà en cours pour « {participant.participant_name} » "
-            f"(lancée à {already_running.started_at.strftime('%H:%M')}). Patientez qu'elle se termine.",
+            f"(lancée à {format_local(already_running.started_at, '%H:%M')}). Patientez qu'elle se termine.",
             "error",
         )
         return redirect(url_for("scenarios.generate_scenarios"))

@@ -50,7 +50,7 @@
             <input type="checkbox" name="selected_ids" value="{{ u.id }}">
           </div>
           <div class="col col-user-email">{{ u.email }}</div>
-          <div class="col col-user-added">{{ u.added_at.strftime('%d/%m/%Y') if u.added_at else '—' }}</div>
+          <div class="col col-user-added">{{ u.added_at | local_dt('%d/%m/%Y') if u.added_at else '—' }}</div>
           <div class="col col-user-by">{{ u.added_by.email if u.added_by else '—' }}</div>
         </div>
       {% endfor %}

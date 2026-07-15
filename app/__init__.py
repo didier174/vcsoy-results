@@ -72,6 +72,10 @@ def create_app(config_class=Config):
     def inject_permissions():
         return {"is_admin": user_is_admin(current_user)}
 
+    from app.timezone_utils import format_local
+
+    app.jinja_env.filters["local_dt"] = format_local
+
     with app.app_context():
         db.create_all()
 

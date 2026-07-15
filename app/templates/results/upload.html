@@ -32,7 +32,7 @@
         <div class="uploaded-file-row">
           <span class="uploaded-file-name">{{ u.filename }}</span>
           <span class="uploaded-file-meta">
-            {{ u.uploaded_at.strftime('%d/%m/%Y %H:%M') if u.uploaded_at else '' }}
+            {{ u.uploaded_at | local_dt if u.uploaded_at else '' }}
             · {{ u.total_count }} test(s)
             {% if u.uploaded_by %}· {{ u.uploaded_by.email }}{% endif %}
           </span>

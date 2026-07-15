@@ -908,6 +908,19 @@ maintenant dans un thread séparé :
   dépend plus de la génération IA ; le client Anthropic garde son propre
   timeout généreux (900 s) pour les cas les plus longs.
 
+## Étape 21 — Affichage des dates/heures en heure locale (Est du Canada)
+
+Toutes les dates/heures sont stockées en UTC (`datetime.utcnow`, pratique
+standard côté serveur), mais étaient jusqu'ici affichées telles quelles —
+décalées de 4-5 h par rapport à l'heure réelle de l'utilisateur. Un filtre
+Jinja `local_dt` (voir `app/timezone_utils.py`, enregistré dans
+`app/__init__.py`) convertit vers l'heure de l'Est (`America/Toronto`, gère
+automatiquement l'heure avancée/normale) au moment de l'affichage
+uniquement — le stockage reste inchangé. Appliqué partout où une date/heure
+est montrée à l'utilisateur (scénarios, records, résultats, rapports,
+administration) ; les dates de facturation (calendrier pur, sans heure)
+ne sont pas concernées.
+
 ## Structure du projet
 
 ```

@@ -54,7 +54,7 @@
                   <td>{{ r.test_result.test_id }}</td>
                   <td>{{ channel_labels.get(r.test_result.channel, r.test_result.channel) }}</td>
                   <td>{{ r.filename }}</td>
-                  <td>{{ r.uploaded_at.strftime('%d/%m/%Y %H:%M') if r.uploaded_at else '' }}</td>
+                  <td>{{ r.uploaded_at | local_dt if r.uploaded_at else '' }}</td>
                 </tr>
               {% endfor %}
             </tbody>
