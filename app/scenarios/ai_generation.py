@@ -76,45 +76,42 @@ def _extract_json_array(text):
 
 MAX_TOKENS = 16000
 MAX_CONTINUATIONS = 3
+TOOLS = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 10}]
+
+
+def _call_claude(client, messages):
+    return client.messages.create(
+        model=MODEL,
+        max_tokens=MAX_TOKENS,
+        thinking={"type": "adaptive"},
+        output_config={"effort": "medium"},
+        tools=TOOLS,
+        messages=messages,
+    )
 
 
 def generate_scenarios(participant_name, website_url, problematiques_text, examples, num_to_generate=10):
     """
     Retourne une liste de dicts {type, contexte, question, reponse, url_source},
     de longueur <= num_to_generate. Lève ScenarioGenerationError en cas d'échec.
+
+    Appelée depuis un thread d'arrière-plan (voir app/scenarios/routes.py,
+    _run_generation) : peut prendre plusieurs minutes sans que cela ne bloque
+    de requête web.
     """
     prompt = _build_prompt(participant_name, website_url, problematiques_text, examples, num_to_generate)
     user_message = {"role": "user", "content": prompt}
 
     try:
-        # timeout généreux : la recherche web + génération de 10 scénarios
-        # peut prendre plusieurs minutes (voir --timeout gunicorn dans
-        # render.yaml, qui doit rester supérieur à cette valeur).
-        client = anthropic.Anthropic(timeout=480.0)
-        tools = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 10}]
-
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=MAX_TOKENS,
-            thinking={"type": "adaptive"},
-            output_config={"effort": "medium"},
-            tools=tools,
-            messages=[user_message],
-        )
+        client = anthropic.Anthropic(timeout=900.0)
+        response = _call_claude(client, [user_message])
 
         # La recherche web est traitée côté serveur ; si elle atteint sa
         # limite interne d'itérations, l'API renvoie "pause_turn" et il faut
         # renvoyer la conversation telle quelle pour qu'elle reprenne.
         continuations = 0
         while response.stop_reason == "pause_turn" and continuations < MAX_CONTINUATIONS:
-            response = client.messages.create(
-                model=MODEL,
-                max_tokens=MAX_TOKENS,
-                thinking={"type": "adaptive"},
-                output_config={"effort": "medium"},
-                tools=tools,
-                messages=[user_message, {"role": "assistant", "content": response.content}],
-            )
+            response = _call_claude(client, [user_message, {"role": "assistant", "content": response.content}])
             continuations += 1
     except anthropic.AuthenticationError as exc:
         raise ScenarioGenerationError("Clé API Anthropic manquante ou invalide (ANTHROPIC_API_KEY).") from exc

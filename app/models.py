@@ -343,10 +343,9 @@ class ScenarioTemplate(db.Model):
 
 class ScenarioFile(db.Model):
     """
-    Un fichier scénario généré pour un participant (Book scénario ou
-    Problématiques, voir kind), à partir d'un modèle (ScenarioTemplate).
-    Pour l'instant, une simple copie du modèle sélectionné ; le contenu
-    sera dérivé du modèle dans une prochaine étape.
+    Un fichier scénario d'un participant (Book scénario ou Problématiques,
+    voir kind), créé à partir d'un modèle (ScenarioTemplate) puis enrichi
+    par la génération IA (voir ScenarioGenerationJob et app/scenarios/).
     """
 
     id = db.Column(db.Integer, primary_key=True)
@@ -371,3 +370,33 @@ class ScenarioFile(db.Model):
     participant = db.relationship("Participant")
     source_template = db.relationship("ScenarioTemplate")
     created_by = db.relationship("User")
+
+
+class ScenarioGenerationJob(db.Model):
+    """
+    Suivi d'une génération de scénarios par IA (« Générer un book ») lancée
+    en arrière-plan : la requête web renvoie immédiatement, la génération
+    (qui peut prendre plusieurs minutes) continue dans un thread séparé, et
+    cette table permet d'afficher son état/résultat à la prochaine
+    consultation de la page (voir app/scenarios/routes.py, _run_generation).
+    """
+
+    STATUS_RUNNING = "running"
+    STATUS_SUCCESS = "success"
+    STATUS_ERROR = "error"
+
+    id = db.Column(db.Integer, primary_key=True)
+    edition_id = db.Column(db.String(20), nullable=False, index=True)
+    participant_id = db.Column(db.Integer, db.ForeignKey("participant.id"), nullable=False)
+
+    status = db.Column(db.String(20), nullable=False, default=STATUS_RUNNING)
+    scenarios_generated = db.Column(db.Integer, nullable=True)
+    error_message = db.Column(db.String(1000), nullable=True)
+
+    started_at = db.Column(db.DateTime, default=datetime.utcnow)
+    finished_at = db.Column(db.DateTime, nullable=True)
+    requested_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    requested_by_email = db.Column(db.String(255))
+
+    participant = db.relationship("Participant")
+    requested_by = db.relationship("User")

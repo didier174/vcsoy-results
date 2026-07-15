@@ -4,11 +4,14 @@ Module « Gestion des scénarios » > « Générer des scénarios ».
 Modèles de scénarios (Book scénario / Problématiques) chargés par
 l'utilisateur. Le bouton « Générer un book » crée (ou réutilise, s'ils
 existent déjà) les fichiers Book scénario et Problématiques d'un
-participant, puis appelle Claude Sonnet 5 (voir ai_generation.py) pour
-rechercher sur le vrai site web du participant et générer 10 nouveaux
-scénarios, ajoutés dans la feuille « step 1 » du Book (colonnes A-G ; H-K
-réservées à « Générer les tests ») et référencés dans le PowerPoint
-Problématiques (numéro + URL source).
+participant, puis lance en arrière-plan (thread séparé, voir
+_run_generation) l'appel à Claude Sonnet 5 (ai_generation.py) qui recherche
+sur le vrai site web du participant et génère 10 nouveaux scénarios,
+ajoutés dans la feuille « step 1 » du Book (colonnes A-G ; H-K réservées à
+« Générer les tests ») et référencés dans le PowerPoint Problématiques
+(numéro + URL source). La génération peut prendre plusieurs minutes ; elle
+tourne donc hors de la requête web (voir ScenarioGenerationJob), pour ne
+pas dépendre d'un timeout HTTP.
 
 « Générer les tests » sera spécifié dans une prochaine étape.
 """
@@ -17,13 +20,15 @@ import io
 import mimetypes
 import os
 import re
+import threading
+from datetime import datetime
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
+from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, current_app
 from flask_login import login_required, current_user
 
 from app.access_control import admin_required
 from app.extensions import db
-from app.models import ScenarioTemplate, ScenarioFile, Participant, ActionLog
+from app.models import ScenarioTemplate, ScenarioFile, ScenarioGenerationJob, Participant, ActionLog
 from app.editions import get_current_edition_id, get_edition
 from app.menu import MENU_ITEMS
 from app.scenarios import ai_generation, excel_utils, pptx_utils
@@ -85,10 +90,27 @@ def generate_scenarios():
     book_templates = [t for t in templates if t.kind == ScenarioTemplate.KIND_BOOK]
     problematiques_templates = [t for t in templates if t.kind == ScenarioTemplate.KIND_PROBLEMATIQUES]
     edition = get_edition(edition_id)
+
+    running_jobs = (
+        ScenarioGenerationJob.query.filter_by(edition_id=edition_id, status=ScenarioGenerationJob.STATUS_RUNNING)
+        .order_by(ScenarioGenerationJob.started_at.desc())
+        .all()
+    )
+    recent_jobs = (
+        ScenarioGenerationJob.query.filter(
+            ScenarioGenerationJob.edition_id == edition_id,
+            ScenarioGenerationJob.status != ScenarioGenerationJob.STATUS_RUNNING,
+        )
+        .order_by(ScenarioGenerationJob.finished_at.desc())
+        .limit(5)
+        .all()
+    )
+
     return render_template(
         "scenarios/generate.html", edition=edition, templates=templates, files=files, participants=participants,
         book_templates=book_templates, problematiques_templates=problematiques_templates, kind_labels=KIND_LABELS,
         active_item=ACTIVE_ITEM_GENERATE, menu_items=MENU_ITEMS,
+        running_jobs=running_jobs, recent_jobs=recent_jobs,
     )
 
 
@@ -188,6 +210,17 @@ def create_scenario_files():
         flash("Modèle ou participant introuvable pour cette édition.", "error")
         return redirect(url_for("scenarios.generate_scenarios"))
 
+    already_running = ScenarioGenerationJob.query.filter_by(
+        edition_id=edition_id, participant_id=participant.id, status=ScenarioGenerationJob.STATUS_RUNNING
+    ).first()
+    if already_running:
+        flash(
+            f"Une génération est déjà en cours pour « {participant.participant_name} » "
+            f"(lancée à {already_running.started_at.strftime('%H:%M')}). Patientez qu'elle se termine.",
+            "error",
+        )
+        return redirect(url_for("scenarios.generate_scenarios"))
+
     book_name, problematiques_name = _scenario_names(participant, edition)
 
     book_file = ScenarioFile.query.filter_by(
@@ -218,48 +251,97 @@ def create_scenario_files():
         )
         db.session.add(problematiques_file)
 
-    db.session.flush()
-
-    try:
-        validated_examples, _next_row, _last_num = excel_utils.load_book_state(book_file.file_data)
-        problematiques_text = pptx_utils.read_problematiques_text(problematiques_file.file_data)
-
-        scenarios = ai_generation.generate_scenarios(
-            participant_name=participant.participant_name,
-            website_url=website_url,
-            problematiques_text=problematiques_text,
-            examples=validated_examples,
-            num_to_generate=SCENARIOS_PER_BATCH,
-        )
-
-        new_book_data, assigned_numbers = excel_utils.append_scenarios(
-            book_file.file_data, participant.participant_name, scenarios
-        )
-        book_file.file_data = new_book_data
-        book_file.file_size = len(new_book_data)
-
-        new_pptx_data = pptx_utils.append_scenario_slides(
-            problematiques_file.file_data, list(zip(assigned_numbers, scenarios))
-        )
-        problematiques_file.file_data = new_pptx_data
-        problematiques_file.file_size = len(new_pptx_data)
-    except (excel_utils.BookWorkbookError, ai_generation.ScenarioGenerationError) as exc:
-        db.session.rollback()
-        flash(f"Génération impossible : {exc}", "error")
-        return redirect(url_for("scenarios.generate_scenarios"))
-
+    job = ScenarioGenerationJob(
+        edition_id=edition_id, participant_id=participant.id, status=ScenarioGenerationJob.STATUS_RUNNING,
+        requested_by_id=current_user.id, requested_by_email=current_user.email,
+    )
+    db.session.add(job)
+    # Commit immédiat (fichiers créés/réutilisés + job "en cours") avant de
+    # lancer la tâche de fond, qui peut prendre plusieurs minutes : réduit
+    # au minimum la fenêtre où un second clic verrait encore "rien
+    # n'existe" et recréerait les fichiers en double.
     db.session.commit()
 
-    _log(
-        "Génération de scénarios par IA",
-        details=f"{len(scenarios)} scénario(s) pour {participant.participant_name} (édition {edition_id})",
-    )
+    app_obj = current_app._get_current_object()
+    threading.Thread(
+        target=_run_generation,
+        args=(app_obj, job.id, book_file.id, problematiques_file.id, website_url),
+        daemon=True,
+    ).start()
+
     flash(
-        f"{len(scenarios)} scénario(s) généré(s) pour « {participant.participant_name} » "
-        f"dans « {book_name} » et « {problematiques_name} ».",
+        f"Génération lancée pour « {participant.participant_name} » dans « {book_name} » et "
+        f"« {problematiques_name} » (peut prendre plusieurs minutes). Actualisez cette page pour suivre l'avancement.",
         "success",
     )
     return redirect(url_for("scenarios.generate_scenarios"))
+
+
+def _run_generation(app, job_id, book_file_id, problematiques_file_id, website_url):
+    """
+    Exécutée dans un thread séparé (voir create_scenario_files) : appelle
+    l'IA puis met à jour les fichiers et le job de suivi. Ne doit jamais
+    lever d'exception non gérée (le thread tournerait sans que personne ne
+    puisse la voir) : toute erreur est capturée et consignée dans le job.
+    """
+    with app.app_context():
+        job = None
+        try:
+            job = db.session.get(ScenarioGenerationJob, job_id)
+            book_file = db.session.get(ScenarioFile, book_file_id)
+            problematiques_file = db.session.get(ScenarioFile, problematiques_file_id)
+            if not job or not book_file or not problematiques_file:
+                return
+            participant = job.participant
+
+            validated_examples, _next_row, _last_num = excel_utils.load_book_state(book_file.file_data)
+            problematiques_text = pptx_utils.read_problematiques_text(problematiques_file.file_data)
+
+            scenarios = ai_generation.generate_scenarios(
+                participant_name=participant.participant_name,
+                website_url=website_url,
+                problematiques_text=problematiques_text,
+                examples=validated_examples,
+                num_to_generate=SCENARIOS_PER_BATCH,
+            )
+
+            new_book_data, assigned_numbers = excel_utils.append_scenarios(
+                book_file.file_data, participant.participant_name, scenarios
+            )
+            book_file.file_data = new_book_data
+            book_file.file_size = len(new_book_data)
+
+            new_pptx_data = pptx_utils.append_scenario_slides(
+                problematiques_file.file_data, list(zip(assigned_numbers, scenarios))
+            )
+            problematiques_file.file_data = new_pptx_data
+            problematiques_file.file_size = len(new_pptx_data)
+
+            job.status = ScenarioGenerationJob.STATUS_SUCCESS
+            job.scenarios_generated = len(scenarios)
+            job.finished_at = datetime.utcnow()
+            db.session.add(ActionLog(
+                user_id=job.requested_by_id, user_email=job.requested_by_email, edition_id=job.edition_id,
+                action="Génération de scénarios par IA",
+                details=f"{len(scenarios)} scénario(s) pour {participant.participant_name} (édition {job.edition_id})",
+            ))
+            db.session.commit()
+        except (excel_utils.BookWorkbookError, ai_generation.ScenarioGenerationError) as exc:
+            db.session.rollback()
+            if job:
+                job.status = ScenarioGenerationJob.STATUS_ERROR
+                job.error_message = str(exc)
+                job.finished_at = datetime.utcnow()
+                db.session.commit()
+        except Exception as exc:  # noqa: BLE001 - tâche de fond : ne doit jamais échouer silencieusement
+            db.session.rollback()
+            if job:
+                job.status = ScenarioGenerationJob.STATUS_ERROR
+                job.error_message = f"Erreur inattendue : {exc}"
+                job.finished_at = datetime.utcnow()
+                db.session.commit()
+        finally:
+            db.session.remove()
 
 
 @scenarios_bp.route("/upload", methods=["POST"])

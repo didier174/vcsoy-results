@@ -14,6 +14,37 @@
     {% endif %}
   {% endwith %}
 
+  {% if running_jobs %}
+    <div class="flash-list">
+      {% for job in running_jobs %}
+        <p class="results-summary-line">
+          Génération en cours pour « {{ job.participant.participant_name if job.participant else '?' }} »
+          (lancée à {{ job.started_at.strftime('%H:%M') }}) — actualisez cette page pour suivre l'avancement.
+        </p>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if recent_jobs %}
+    <div class="flash-list">
+      {% for job in recent_jobs %}
+        {% if job.status == 'success' %}
+          <p class="flash flash-success">
+            Génération terminée pour « {{ job.participant.participant_name if job.participant else '?' }} » :
+            {{ job.scenarios_generated }} scénario(s) généré(s)
+            ({{ job.finished_at.strftime('%d/%m/%Y %H:%M') if job.finished_at else '' }}).
+          </p>
+        {% else %}
+          <p class="flash flash-error">
+            Génération échouée pour « {{ job.participant.participant_name if job.participant else '?' }} » :
+            {{ job.error_message }}
+            ({{ job.finished_at.strftime('%d/%m/%Y %H:%M') if job.finished_at else '' }}).
+          </p>
+        {% endif %}
+      {% endfor %}
+    </div>
+  {% endif %}
+
   <div class="page-header-row">
     <h2 class="detail-section-title" style="margin: 0;">Modèles de scénarios chargés</h2>
     <div class="actions" style="margin: 0;">
@@ -251,6 +282,8 @@
       </label>
       <p class="muted" style="font-size: 12px;">
         L'IA recherchera sur ce site pour générer 10 nouveaux scénarios de client mystère.
+        La génération peut prendre plusieurs minutes et continue en arrière-plan : vous pouvez
+        fermer cette fenêtre et actualiser la page pour suivre l'avancement.
       </p>
       <div class="dialog-actions">
         <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Annuler</button>

@@ -869,9 +869,8 @@ qu'une simple copie de modèle.
   trouvée (pas de capture d'écran).
 - Nécessite la variable d'environnement `ANTHROPIC_API_KEY` (voir
   `.env.example`) ; en son absence, un message d'erreur explicite s'affiche
-  sans créer de fichier partiel. La génération peut prendre plusieurs
-  minutes (recherche web réelle) : timeout gunicorn et client Anthropic
-  réglés à 600 s en conséquence.
+  sans créer de fichier partiel. Voir Étape 20 pour l'exécution en
+  arrière-plan (la génération peut prendre plusieurs minutes).
 - **Charger** un fichier scénario propose maintenant un champ
   **Participant (optionnel)** : si le fichier rechargé remplace le Book
   scénario ou les Problématiques d'un participant (par exemple après
@@ -883,6 +882,31 @@ qu'une simple copie de modèle.
 - « Générer les tests » (qui dupliquera les scénarios validés selon la
   colonne K, pour générer par exemple des tests téléphoniques) reste à
   spécifier dans une prochaine étape.
+
+## Étape 20 — Génération de scénarios en arrière-plan
+
+La recherche web réelle peut prendre plusieurs minutes (jusqu'à 10+ pour un
+participant sans aucun scénario déjà validé), largement au-delà de ce
+qu'une requête web synchrone peut tenir de façon fiable (on a buté deux
+fois sur des timeouts avant ce changement). La génération tourne
+maintenant dans un thread séparé :
+
+- Le clic sur **« Générer un book »** crée/réutilise les fichiers Book et
+  Problématiques, enregistre un `ScenarioGenerationJob` (statut « en
+  cours »), puis **répond immédiatement** avec un message « Génération
+  lancée, actualisez la page ». Le calcul continue côté serveur sans limite
+  de temps liée à la page web.
+- Un second clic pendant qu'une génération est en cours pour le même
+  participant est bloqué (message d'erreur), ce qui évite aussi les
+  doublons en cas de double-clic.
+- La page « Générer des scénarios » affiche, à chaque chargement, les
+  générations **en cours** (participant + heure de lancement) et les **5
+  dernières terminées** (succès avec nombre de scénarios, ou échec avec le
+  message d'erreur) — il suffit d'actualiser pour suivre l'avancement.
+- Le timeout gunicorn (`render.yaml`) est réduit à 120 s (marge de
+  sécurité pour les autres opérations synchrones du site) puisqu'il ne
+  dépend plus de la génération IA ; le client Anthropic garde son propre
+  timeout généreux (900 s) pour les cas les plus longs.
 
 ## Structure du projet
 
