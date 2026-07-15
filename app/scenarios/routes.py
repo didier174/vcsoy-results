@@ -278,6 +278,18 @@ def create_scenario_files():
     return redirect(url_for("scenarios.generate_scenarios"))
 
 
+def _apply_usage_to_job(job, usage):
+    """Reporte l'usage réel (tokens, recherches web, coût estimé) sur le
+    job, qu'il ait réussi ou échoué après avoir tout de même consommé de
+    l'API (voir ai_generation.ScenarioGenerationError.usage)."""
+    if not usage:
+        return
+    job.input_tokens = usage.get("input_tokens")
+    job.output_tokens = usage.get("output_tokens")
+    job.web_search_count = usage.get("web_search_count")
+    job.estimated_cost_usd = usage.get("estimated_cost_usd")
+
+
 def _run_generation(app, job_id, book_file_id, problematiques_file_id, website_url):
     """
     Exécutée dans un thread séparé (voir create_scenario_files) : appelle
@@ -298,7 +310,7 @@ def _run_generation(app, job_id, book_file_id, problematiques_file_id, website_u
             validated_examples, _next_row, _last_num = excel_utils.load_book_state(book_file.file_data)
             problematiques_text = pptx_utils.read_problematiques_text(problematiques_file.file_data)
 
-            scenarios = ai_generation.generate_scenarios(
+            scenarios, usage = ai_generation.generate_scenarios(
                 participant_name=participant.participant_name,
                 website_url=website_url,
                 problematiques_text=problematiques_text,
@@ -320,6 +332,7 @@ def _run_generation(app, job_id, book_file_id, problematiques_file_id, website_u
 
             job.status = ScenarioGenerationJob.STATUS_SUCCESS
             job.scenarios_generated = len(scenarios)
+            _apply_usage_to_job(job, usage)
             job.finished_at = datetime.utcnow()
             db.session.add(ActionLog(
                 user_id=job.requested_by_id, user_email=job.requested_by_email, edition_id=job.edition_id,
@@ -332,6 +345,7 @@ def _run_generation(app, job_id, book_file_id, problematiques_file_id, website_u
             if job:
                 job.status = ScenarioGenerationJob.STATUS_ERROR
                 job.error_message = str(exc)
+                _apply_usage_to_job(job, getattr(exc, "usage", None))
                 job.finished_at = datetime.utcnow()
                 db.session.commit()
         except Exception as exc:  # noqa: BLE001 - tâche de fond : ne doit jamais échouer silencieusement

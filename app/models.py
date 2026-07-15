@@ -393,6 +393,14 @@ class ScenarioGenerationJob(db.Model):
     scenarios_generated = db.Column(db.Integer, nullable=True)
     error_message = db.Column(db.String(1000), nullable=True)
 
+    # Usage réel renvoyé par l'API Anthropic (voir ai_generation.py), rempli
+    # dès qu'une réponse a été obtenue même en cas d'échec après coup, pour
+    # pouvoir suivre le coût engagé.
+    input_tokens = db.Column(db.Integer, nullable=True)
+    output_tokens = db.Column(db.Integer, nullable=True)
+    web_search_count = db.Column(db.Integer, nullable=True)
+    estimated_cost_usd = db.Column(db.Float, nullable=True)
+
     started_at = db.Column(db.DateTime, default=datetime.utcnow)
     finished_at = db.Column(db.DateTime, nullable=True)
     requested_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)

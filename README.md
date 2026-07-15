@@ -921,6 +921,30 @@ est montrée à l'utilisateur (scénarios, records, résultats, rapports,
 administration) ; les dates de facturation (calendrier pur, sans heure)
 ne sont pas concernées.
 
+## Étape 22 — Suivi du coût réel de chaque génération de scénarios
+
+Chaque appel à Claude renvoie son usage réel (tokens d'entrée/sortie,
+nombre de recherches web) ; ce module le récupère et calcule un coût
+estimé (tarifs Sonnet 5 en vigueur, voir `ai_generation.py`), même en cas
+d'échec après une réponse partielle (les tentatives ayant échoué à cause
+d'un timeout ont quand même consommé de l'API par le passé). Le
+`ScenarioGenerationJob` stocke `input_tokens`, `output_tokens`,
+`web_search_count` et `estimated_cost_usd` ; la page « Générer des
+scénarios » affiche ce détail dans les bannières de génération
+terminée/échouée, pour un suivi du coût directement dans l'outil (en plus
+de la Console Anthropic, console.anthropic.com/cost, qui reste la source
+exacte pour la facturation réelle).
+
+**Migration requise** (nouvelles colonnes sur une table déjà existante,
+non créées automatiquement par `db.create_all()`) :
+
+```sql
+ALTER TABLE scenario_generation_job ADD COLUMN IF NOT EXISTS input_tokens INTEGER;
+ALTER TABLE scenario_generation_job ADD COLUMN IF NOT EXISTS output_tokens INTEGER;
+ALTER TABLE scenario_generation_job ADD COLUMN IF NOT EXISTS web_search_count INTEGER;
+ALTER TABLE scenario_generation_job ADD COLUMN IF NOT EXISTS estimated_cost_usd DOUBLE PRECISION;
+```
+
 ## Structure du projet
 
 ```

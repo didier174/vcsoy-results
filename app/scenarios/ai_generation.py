@@ -18,7 +18,42 @@ REQUIRED_KEYS = ("type", "contexte", "question", "reponse", "url_source")
 
 
 class ScenarioGenerationError(Exception):
-    pass
+    """`usage` (dict input_tokens/output_tokens/web_search_count/estimated_cost_usd)
+    est rempli dès qu'une réponse a été obtenue avant l'échec, pour pouvoir
+    tout de même consigner le coût engagé (voir app/scenarios/routes.py)."""
+
+    def __init__(self, message, usage=None):
+        super().__init__(message)
+        self.usage = usage or {}
+
+
+# Tarifs Claude Sonnet 5 (tarif promotionnel en vigueur jusqu'au 2026-08-31 ;
+# revient à 3,00 $/15,00 $ ensuite — voir platform.claude.com/docs/en/about-claude/pricing
+# et mettre à jour ces constantes à cette date).
+INPUT_PRICE_PER_MTOK = 2.00
+OUTPUT_PRICE_PER_MTOK = 10.00
+WEB_SEARCH_PRICE_PER_1000 = 10.00
+
+
+def _new_usage_totals():
+    return {"input_tokens": 0, "output_tokens": 0, "web_search_count": 0}
+
+
+def _accumulate_usage(totals, response):
+    totals["input_tokens"] += response.usage.input_tokens
+    totals["output_tokens"] += response.usage.output_tokens
+    if response.usage.server_tool_use:
+        totals["web_search_count"] += response.usage.server_tool_use.web_search_requests
+
+
+def _finalize_usage(totals):
+    totals["estimated_cost_usd"] = round(
+        totals["input_tokens"] * INPUT_PRICE_PER_MTOK / 1_000_000
+        + totals["output_tokens"] * OUTPUT_PRICE_PER_MTOK / 1_000_000
+        + totals["web_search_count"] * WEB_SEARCH_PRICE_PER_1000 / 1000,
+        4,
+    )
+    return totals
 
 
 def _build_prompt(participant_name, website_url, problematiques_text, examples, num_to_generate):
@@ -70,7 +105,7 @@ def _extract_json_array(text):
     start = text.find("[")
     end = text.rfind("]")
     if start == -1 or end == -1 or end < start:
-        raise ScenarioGenerationError("Réponse du modèle sans tableau JSON exploitable.")
+        raise ValueError("Réponse du modèle sans tableau JSON exploitable.")
     return json.loads(text[start : end + 1])
 
 
@@ -92,8 +127,11 @@ def _call_claude(client, messages):
 
 def generate_scenarios(participant_name, website_url, problematiques_text, examples, num_to_generate=10):
     """
-    Retourne une liste de dicts {type, contexte, question, reponse, url_source},
-    de longueur <= num_to_generate. Lève ScenarioGenerationError en cas d'échec.
+    Retourne (scenarios, usage) : scenarios est une liste de dicts
+    {type, contexte, question, reponse, url_source} (longueur <= num_to_generate) ;
+    usage un dict {input_tokens, output_tokens, web_search_count, estimated_cost_usd}.
+    Lève ScenarioGenerationError (avec exc.usage rempli si une réponse a été
+    obtenue avant l'échec) en cas d'échec.
 
     Appelée depuis un thread d'arrière-plan (voir app/scenarios/routes.py,
     _run_generation) : peut prendre plusieurs minutes sans que cela ne bloque
@@ -101,10 +139,12 @@ def generate_scenarios(participant_name, website_url, problematiques_text, examp
     """
     prompt = _build_prompt(participant_name, website_url, problematiques_text, examples, num_to_generate)
     user_message = {"role": "user", "content": prompt}
+    usage = _new_usage_totals()
 
     try:
         client = anthropic.Anthropic(timeout=900.0)
         response = _call_claude(client, [user_message])
+        _accumulate_usage(usage, response)
 
         # La recherche web est traitée côté serveur ; si elle atteint sa
         # limite interne d'itérations, l'API renvoie "pause_turn" et il faut
@@ -112,39 +152,49 @@ def generate_scenarios(participant_name, website_url, problematiques_text, examp
         continuations = 0
         while response.stop_reason == "pause_turn" and continuations < MAX_CONTINUATIONS:
             response = _call_claude(client, [user_message, {"role": "assistant", "content": response.content}])
+            _accumulate_usage(usage, response)
             continuations += 1
     except anthropic.AuthenticationError as exc:
-        raise ScenarioGenerationError("Clé API Anthropic manquante ou invalide (ANTHROPIC_API_KEY).") from exc
+        raise ScenarioGenerationError(
+            "Clé API Anthropic manquante ou invalide (ANTHROPIC_API_KEY).", usage=_finalize_usage(usage)
+        ) from exc
     except anthropic.RateLimitError as exc:
-        raise ScenarioGenerationError("Limite de requêtes Anthropic atteinte, réessayez dans un instant.") from exc
+        raise ScenarioGenerationError(
+            "Limite de requêtes Anthropic atteinte, réessayez dans un instant.", usage=_finalize_usage(usage)
+        ) from exc
     except anthropic.APIError as exc:
-        raise ScenarioGenerationError(f"Erreur de l'API Anthropic : {exc}") from exc
+        raise ScenarioGenerationError(f"Erreur de l'API Anthropic : {exc}", usage=_finalize_usage(usage)) from exc
     except Exception as exc:
         # Couvre notamment l'absence totale de clé API (ANTHROPIC_API_KEY non
         # définie), qui échoue avant même d'obtenir une exception anthropic.*.
-        raise ScenarioGenerationError(f"Clé API Anthropic non configurée ou erreur inattendue : {exc}") from exc
+        raise ScenarioGenerationError(
+            f"Clé API Anthropic non configurée ou erreur inattendue : {exc}", usage=_finalize_usage(usage)
+        ) from exc
+
+    _finalize_usage(usage)
 
     if response.stop_reason == "refusal":
-        raise ScenarioGenerationError("Le modèle a refusé de traiter cette demande.")
+        raise ScenarioGenerationError("Le modèle a refusé de traiter cette demande.", usage=usage)
     if response.stop_reason == "max_tokens":
         raise ScenarioGenerationError(
-            "La réponse du modèle a été tronquée (limite de tokens atteinte avant la fin de la génération)."
+            "La réponse du modèle a été tronquée (limite de tokens atteinte avant la fin de la génération).",
+            usage=usage,
         )
 
     text_parts = [block.text for block in response.content if block.type == "text"]
     full_text = "\n".join(text_parts).strip()
     if not full_text:
         raise ScenarioGenerationError(
-            f"Le modèle n'a renvoyé aucun texte exploitable (stop_reason : {response.stop_reason})."
+            f"Le modèle n'a renvoyé aucun texte exploitable (stop_reason : {response.stop_reason}).", usage=usage
         )
 
     try:
         data = _extract_json_array(full_text)
     except (ValueError, re.error) as exc:
-        raise ScenarioGenerationError("Réponse du modèle illisible (JSON invalide).") from exc
+        raise ScenarioGenerationError("Réponse du modèle illisible (JSON invalide).", usage=usage) from exc
 
     if not isinstance(data, list):
-        raise ScenarioGenerationError("Le modèle n'a pas renvoyé une liste de scénarios.")
+        raise ScenarioGenerationError("Le modèle n'a pas renvoyé une liste de scénarios.", usage=usage)
 
     scenarios = []
     for item in data:
@@ -153,6 +203,6 @@ def generate_scenarios(participant_name, website_url, problematiques_text, examp
         scenarios.append({k: str(item.get(k, "")).strip() for k in REQUIRED_KEYS})
 
     if not scenarios:
-        raise ScenarioGenerationError("Aucun scénario exploitable dans la réponse du modèle.")
+        raise ScenarioGenerationError("Aucun scénario exploitable dans la réponse du modèle.", usage=usage)
 
-    return scenarios[:num_to_generate]
+    return scenarios[:num_to_generate], usage

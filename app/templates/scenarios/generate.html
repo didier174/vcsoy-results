@@ -32,12 +32,19 @@
           <p class="flash flash-success">
             Génération terminée pour « {{ job.participant.participant_name if job.participant else '?' }} » :
             {{ job.scenarios_generated }} scénario(s) généré(s)
+            {% if job.estimated_cost_usd is not none %}
+              — {{ (job.input_tokens or 0) + (job.output_tokens or 0) }} tokens,
+              {{ job.web_search_count or 0 }} recherche(s) web, ~{{ '%.2f'|format(job.estimated_cost_usd) }} $ US estimé
+            {% endif %}
             ({{ job.finished_at | local_dt if job.finished_at else '' }}).
           </p>
         {% else %}
           <p class="flash flash-error">
             Génération échouée pour « {{ job.participant.participant_name if job.participant else '?' }} » :
             {{ job.error_message }}
+            {% if job.estimated_cost_usd %}
+              — ~{{ '%.2f'|format(job.estimated_cost_usd) }} $ US déjà engagé avant l'échec
+            {% endif %}
             ({{ job.finished_at | local_dt if job.finished_at else '' }}).
           </p>
         {% endif %}
