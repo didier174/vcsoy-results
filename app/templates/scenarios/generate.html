@@ -185,6 +185,17 @@
   <form method="post" action="{{ url_for('scenarios.upload_scenario_file') }}" enctype="multipart/form-data" class="upload-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="file" name="scenario_file" required>
+    <label class="dialog-input-label">
+      Participant (si ce fichier remplace le Book scénario ou les
+      Problématiques d'un participant, pour que les prochaines
+      générations continuent à partir de ce fichier)
+      <select name="participant_id">
+        <option value="">— Aucun (fichier autonome) —</option>
+        {% for p in participants %}
+          <option value="{{ p.id }}">{{ p.participant_name }}{% if p.code %} ({{ p.code }}){% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
     <div class="dialog-actions">
       <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Fermer</button>
       <button type="submit" class="btn btn-primary">Charger</button>

@@ -869,7 +869,17 @@ qu'une simple copie de modèle.
   trouvée (pas de capture d'écran).
 - Nécessite la variable d'environnement `ANTHROPIC_API_KEY` (voir
   `.env.example`) ; en son absence, un message d'erreur explicite s'affiche
-  sans créer de fichier partiel.
+  sans créer de fichier partiel. La génération peut prendre plusieurs
+  minutes (recherche web réelle) : timeout gunicorn et client Anthropic
+  réglés à 600 s en conséquence.
+- **Charger** un fichier scénario propose maintenant un champ
+  **Participant (optionnel)** : si le fichier rechargé remplace le Book
+  scénario ou les Problématiques d'un participant (par exemple après
+  validation/nettoyage manuel des scénarios en dehors de l'outil), le lier
+  au participant lui donne le nom attendu par « Générer un book », pour
+  que la prochaine génération continue à partir de ce fichier au lieu
+  d'en recréer un depuis le modèle. Recharger pour le même participant met
+  à jour le fichier existant plutôt que d'en créer un doublon.
 - « Générer les tests » (qui dupliquera les scénarios validés selon la
   colonne K, pour générer par exemple des tests téléphoniques) reste à
   spécifier dans une prochaine étape.

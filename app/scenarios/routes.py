@@ -46,6 +46,18 @@ def _sanitize_filename(raw):
     return name or "Fichier"
 
 
+BOOK_EXTENSIONS = (".xlsx", ".xlsm", ".xls")
+PROBLEMATIQUES_EXTENSIONS = (".pptx", ".ppt", ".potx")
+
+
+def _scenario_names(participant, edition):
+    """Noms attendus des fichiers Book scénario / Problématiques d'un
+    participant, utilisés à la fois pour la génération IA (create_scenario_files)
+    et pour retrouver un fichier rechargé manuellement (upload_scenario_file)."""
+    base_suffix = _sanitize_filename(f"{participant.participant_name}_{edition['short_label']}").replace(" ", "_")
+    return f"Book_scénario_{base_suffix}", f"Problématiques_{base_suffix}"
+
+
 def _log(action, details=""):
     entry = ActionLog(
         user_id=current_user.id, user_email=current_user.email,
@@ -176,9 +188,7 @@ def create_scenario_files():
         flash("Modèle ou participant introuvable pour cette édition.", "error")
         return redirect(url_for("scenarios.generate_scenarios"))
 
-    base_suffix = _sanitize_filename(f"{participant.participant_name}_{edition['short_label']}").replace(" ", "_")
-    book_name = f"Book_scénario_{base_suffix}"
-    problematiques_name = f"Problématiques_{base_suffix}"
+    book_name, problematiques_name = _scenario_names(participant, edition)
 
     book_file = ScenarioFile.query.filter_by(
         edition_id=edition_id, participant_id=participant.id, name=book_name
@@ -256,6 +266,7 @@ def create_scenario_files():
 @login_required
 def upload_scenario_file():
     edition_id = get_current_edition_id()
+    edition = get_edition(edition_id)
     file = request.files.get("scenario_file")
     if not file or not file.filename:
         flash("Merci de choisir un fichier avant de cliquer sur « Charger ».", "error")
@@ -264,12 +275,56 @@ def upload_scenario_file():
     filename = file.filename
     content = file.read()
     content_type = file.content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
-    name = _sanitize_filename(os.path.splitext(filename)[0])
+    ext = os.path.splitext(filename)[1].lower()
 
-    db.session.add(ScenarioFile(
-        edition_id=edition_id, name=name, filename=filename, content_type=content_type,
-        file_data=content, file_size=len(content), created_by_id=current_user.id,
-    ))
+    participant_id = request.form.get("participant_id", "").strip()
+    participant = None
+    if participant_id.isdigit():
+        participant = Participant.query.filter_by(id=int(participant_id), edition_id=edition_id).first()
+
+    if participant:
+        # Fichier rattaché à un participant (ex. Book/Problématiques
+        # retéléchargé, nettoyé, puis rechargé) : on lui donne le même nom
+        # que « Générer un book » attend, pour que les prochaines
+        # générations continuent à partir de ce fichier plutôt que d'en
+        # recréer un depuis le modèle.
+        if ext in BOOK_EXTENSIONS:
+            kind = ScenarioTemplate.KIND_BOOK
+        elif ext in PROBLEMATIQUES_EXTENSIONS:
+            kind = ScenarioTemplate.KIND_PROBLEMATIQUES
+        else:
+            flash(
+                "Pour lier ce fichier à un participant, chargez un fichier Excel "
+                "(Book scénario) ou PowerPoint (Problématiques).",
+                "error",
+            )
+            return redirect(url_for("scenarios.generate_scenarios"))
+
+        book_name, problematiques_name = _scenario_names(participant, edition)
+        name = book_name if kind == ScenarioTemplate.KIND_BOOK else problematiques_name
+
+        scenario_file = ScenarioFile.query.filter_by(
+            edition_id=edition_id, participant_id=participant.id, name=name
+        ).first()
+        if scenario_file:
+            scenario_file.kind = kind
+            scenario_file.filename = filename
+            scenario_file.content_type = content_type
+            scenario_file.file_data = content
+            scenario_file.file_size = len(content)
+        else:
+            db.session.add(ScenarioFile(
+                edition_id=edition_id, kind=kind, name=name, participant_id=participant.id,
+                filename=filename, content_type=content_type, file_data=content, file_size=len(content),
+                created_by_id=current_user.id,
+            ))
+    else:
+        name = _sanitize_filename(os.path.splitext(filename)[0])
+        db.session.add(ScenarioFile(
+            edition_id=edition_id, name=name, filename=filename, content_type=content_type,
+            file_data=content, file_size=len(content), created_by_id=current_user.id,
+        ))
+
     db.session.commit()
 
     _log("Chargement direct d'un fichier scénario", details=f"{filename} (édition {edition_id})")
