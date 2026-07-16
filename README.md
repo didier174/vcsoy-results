@@ -997,7 +997,7 @@ Reprend la structure à deux tableaux de « Générer des scénarios » :
 - **Génération (synchrone, pas de recherche web)** : pour chaque scénario
   du Book scénario (feuille « step 1 »), duplique la ligne en autant de
   tests que demandé par canal — colonnes **H** (Téléphone, plage
-  1200-1299), **I** (E-mail, 1300-1349), **J** (Navigation Internet,
+  1200-1299), **I** (E-mail, 1300-1339), **J** (Navigation Internet,
   1350-1364), **K** (Réseaux sociaux, 1400-1409), **L** (Chat,
   1450-1459). Colonnes du fichier test remplies : A Participant, B Id Test
   Mystère (`<code catégorie><code participant><numéro de plage>`, ex.
