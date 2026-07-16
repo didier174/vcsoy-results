@@ -215,13 +215,17 @@ def fill_invoice_xlsx(invoice):
 
     for item in invoice.line_items:
         role = item.get("role")
+        # .get(..., 0) plutôt que item[...] : certaines factures créées
+        # avec une version antérieure du code n'ont pas ces clés sur toutes
+        # les lignes (voir historique) — éviter un KeyError qui empêcherait
+        # de télécharger une facture existante.
         if role == "vcsoy_heading":
-            _write_description(ROW_VCSOY_HEADING, item["description"], bold=True)
-            _write_amounts(ROW_VCSOY_HEADING, item["quantity"], item["unit_price"], item["total"])
+            _write_description(ROW_VCSOY_HEADING, item.get("description", ""), bold=True)
+            _write_amounts(ROW_VCSOY_HEADING, item.get("quantity", 0), item.get("unit_price", 0), item.get("total", 0))
         elif role == "vcsoy_plain":
             row = next(plain_bullet_rows, None)
             if row is not None:
-                _write_description(row, item["description"], bold=False, indent=BULLET_INDENT)
+                _write_description(row, item.get("description", ""), bold=False, indent=BULLET_INDENT)
                 # Une des 3 lignes de puces occupait auparavant la ligne
                 # portant le prix dans le modèle (avec une valeur d'exemple
                 # figée) : on l'efface explicitement, ces lignes n'ayant
@@ -230,8 +234,8 @@ def fill_invoice_xlsx(invoice):
         elif role == "standalone":
             row = next(standalone_rows, None)
             if row is not None:
-                _write_description(row, item["description"], bold=False)
-                _write_amounts(row, item["quantity"], item["unit_price"], item["total"])
+                _write_description(row, item.get("description", ""), bold=False)
+                _write_amounts(row, item.get("quantity", 0), item.get("unit_price", 0), item.get("total", 0))
 
     ws["AF38"] = invoice.subtotal
     ws["AF39"] = invoice.gst_amount
@@ -331,13 +335,17 @@ def render_invoice_pdf(invoice):
     ]
     for i, item in enumerate(invoice.line_items, start=1):
         role = item.get("role")
+        # .get(..., 0) plutôt que item[...] : certaines factures créées
+        # avec une version antérieure du code n'ont pas ces clés sur toutes
+        # les lignes (voir historique) — éviter un KeyError qui empêcherait
+        # de télécharger une facture existante.
         if role == "vcsoy_heading":
             # Intitulé du produit VCSOY, portant sa quantité/prix/total.
             table_data.append([
-                item["description"],
-                f"{item['quantity']:.2f}",
-                f"{item['unit_price']:,.2f} $",
-                f"{item['total']:,.2f} $",
+                item.get("description", ""),
+                f"{item.get('quantity', 0):.2f}",
+                f"{item.get('unit_price', 0):,.2f} $",
+                f"{item.get('total', 0):,.2f} $",
             ])
             style_commands.append(("FONTNAME", (0, i), (0, i), "Helvetica-Bold"))
             style_commands.append(("ALIGN", (0, i), (0, i), "LEFT"))
@@ -345,7 +353,7 @@ def render_invoice_pdf(invoice):
             # Puce descriptive du produit VCSOY, sans prix propre : décalée
             # à droite pour bien montrer qu'elle fait partie de l'intitulé
             # ci-dessus plutôt que d'être un produit distinct.
-            table_data.append(["- " + item["description"], "", "", ""])
+            table_data.append(["- " + item.get("description", ""), "", "", ""])
             style_commands.append(("ALIGN", (0, i), (0, i), "LEFT"))
             style_commands.append(("LEFTPADDING", (0, i), (0, i), 24))
         elif "total" in item:
@@ -353,16 +361,16 @@ def render_invoice_pdf(invoice):
             # une seule ligne, mise en gras comme l'intitulé du VCSOY, sans
             # tiret puisqu'il n'y a pas de puces de détail en dessous.
             table_data.append([
-                item["description"],
-                f"{item['quantity']:.2f}",
-                f"{item['unit_price']:,.2f} $",
-                f"{item['total']:,.2f} $",
+                item.get("description", ""),
+                f"{item.get('quantity', 0):.2f}",
+                f"{item.get('unit_price', 0):,.2f} $",
+                f"{item.get('total', 0):,.2f} $",
             ])
             style_commands.append(("FONTNAME", (0, i), (0, i), "Helvetica-Bold"))
             style_commands.append(("ALIGN", (0, i), (0, i), "LEFT"))
         else:
             # Ligne descriptive sans prix propre (cas générique restant).
-            table_data.append(["- " + item["description"], "", "", ""])
+            table_data.append(["- " + item.get("description", ""), "", "", ""])
             style_commands.append(("ALIGN", (0, i), (0, i), "LEFT"))
 
     products_table = Table(table_data, colWidths=[255, 70, 90, 90])
