@@ -424,3 +424,55 @@ class ScenarioGenerationJob(db.Model):
 
     participant = db.relationship("Participant")
     requested_by = db.relationship("User")
+
+
+class TestTemplate(db.Model):
+    """
+    Modèle de fichier test pour « Gestion des scénarios » > « Générer les
+    tests » : un classeur Excel ne contenant que la ligne d'en-tête
+    (vérifié au chargement, voir app/scenarios/test_generation.py).
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    edition_id = db.Column(db.String(20), nullable=False, index=True)
+
+    filename = db.Column(db.String(255))
+    content_type = db.Column(db.String(100))
+    file_data = db.Column(db.LargeBinary, nullable=False)
+    file_size = db.Column(db.Integer)
+
+    uploaded_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    uploaded_by = db.relationship("User")
+
+
+class TestFile(db.Model):
+    """
+    Fichier test généré pour un participant (« Générer les tests ») :
+    copie du modèle sélectionné, enrichie en dupliquant les lignes du Book
+    scénario du participant selon le nombre de tests par canal (colonnes
+    H à L de la feuille « step 1 », voir test_generation.py).
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    edition_id = db.Column(db.String(20), nullable=False, index=True)
+
+    name = db.Column(db.String(255), nullable=False)
+    language = db.Column(db.String(5), nullable=True)
+
+    participant_id = db.Column(db.Integer, db.ForeignKey("participant.id"), nullable=True)
+    source_template_id = db.Column(db.Integer, db.ForeignKey("test_template.id"), nullable=True)
+
+    filename = db.Column(db.String(255))
+    content_type = db.Column(db.String(100))
+    file_data = db.Column(db.LargeBinary, nullable=False)
+    file_size = db.Column(db.Integer)
+
+    created_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    participant = db.relationship("Participant")
+    source_template = db.relationship("TestTemplate")
+    created_by = db.relationship("User")

@@ -28,11 +28,13 @@ from flask_login import login_required, current_user
 
 from app.access_control import admin_required
 from app.extensions import db
-from app.models import ScenarioTemplate, ScenarioFile, ScenarioGenerationJob, Participant, ActionLog
+from app.models import (
+    ScenarioTemplate, ScenarioFile, ScenarioGenerationJob, TestTemplate, TestFile, Participant, ActionLog,
+)
 from app.editions import get_current_edition_id, get_edition
 from app.menu import MENU_ITEMS
 from app.timezone_utils import format_local
-from app.scenarios import ai_generation, excel_utils, pptx_utils
+from app.scenarios import ai_generation, excel_utils, pptx_utils, test_generation
 
 scenarios_bp = Blueprint("scenarios", __name__, url_prefix="/scenarios")
 
@@ -67,6 +69,15 @@ def _scenario_names(participant, edition):
     et pour retrouver un fichier rechargé manuellement (upload_scenario_file)."""
     base_suffix = _sanitize_filename(f"{participant.participant_name}_{edition['short_label']}").replace(" ", "_")
     return f"Book_scénario_{base_suffix}", f"Problématiques_{base_suffix}"
+
+
+def _test_file_name(participant, edition, language):
+    """Nom attendu du fichier test d'un participant (un fichier par
+    participant, langue et édition)."""
+    lang_label = "Fr" if language == ScenarioTemplate.LANG_FR else "Eng"
+    participant_part = _sanitize_filename(participant.participant_name).replace(" ", "_")
+    edition_part = _sanitize_filename(edition["short_label"]).replace(" ", "_")
+    return f"{lang_label}_Test_{participant_part}_ESCDA_CA_{edition_part}"
 
 
 def _log(action, details=""):
@@ -507,11 +518,232 @@ def delete_scenario_files():
     return redirect(url_for("scenarios.generate_scenarios"))
 
 
+TEST_TEMPLATE_EXTENSIONS = (".xlsx", ".xlsm", ".xls")
+
+
 @scenarios_bp.route("/tests", methods=["GET"])
 @login_required
 def generate_tests():
-    edition = get_edition(get_current_edition_id())
-    return render_template(
-        "placeholder.html", edition=edition, menu_items=MENU_ITEMS,
-        active_item=ACTIVE_ITEM_TESTS, title=ACTIVE_ITEM_TESTS,
+    edition_id = get_current_edition_id()
+    edition = get_edition(edition_id)
+
+    test_templates = (
+        TestTemplate.query.filter_by(edition_id=edition_id).order_by(TestTemplate.uploaded_at.desc()).all()
     )
+    test_files = TestFile.query.filter_by(edition_id=edition_id).order_by(TestFile.updated_at.desc()).all()
+
+    # Seuls les participants ayant déjà un Book scénario peuvent avoir un
+    # fichier test généré (voir create_test_file) : on ne propose que ceux-là.
+    book_participant_ids = {
+        f.participant_id
+        for f in ScenarioFile.query.filter_by(edition_id=edition_id, kind=ScenarioTemplate.KIND_BOOK).all()
+        if f.participant_id
+    }
+    participants = [
+        p for p in Participant.query.filter_by(edition_id=edition_id).order_by(Participant.participant_name).all()
+        if p.id in book_participant_ids
+    ]
+
+    return render_template(
+        "scenarios/tests.html", edition=edition, test_templates=test_templates, test_files=test_files,
+        participants=participants, language_labels=LANGUAGE_LABELS,
+        active_item=ACTIVE_ITEM_TESTS, menu_items=MENU_ITEMS,
+    )
+
+
+@scenarios_bp.route("/tests/templates/upload", methods=["POST"])
+@login_required
+def upload_test_template():
+    edition_id = get_current_edition_id()
+    file = request.files.get("template_file")
+    if not file or not file.filename:
+        flash("Merci de choisir un fichier avant de cliquer sur « Charger ».", "error")
+        return redirect(url_for("scenarios.generate_tests"))
+
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in TEST_TEMPLATE_EXTENSIONS:
+        flash("Seuls les fichiers Excel (.xlsx, .xlsm, .xls) sont acceptés pour un modèle de fichier test.", "error")
+        return redirect(url_for("scenarios.generate_tests"))
+
+    filename = file.filename
+    content = file.read()
+    content_type = file.content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+
+    try:
+        test_generation.validate_test_template_empty(content)
+    except test_generation.TestGenerationError as exc:
+        flash(f"Modèle refusé : {exc}", "error")
+        return redirect(url_for("scenarios.generate_tests"))
+
+    db.session.add(TestTemplate(
+        edition_id=edition_id, filename=filename, content_type=content_type,
+        file_data=content, file_size=len(content), uploaded_by_id=current_user.id,
+    ))
+    db.session.commit()
+
+    _log("Chargement d'un modèle de fichier test", details=f"{filename} (édition {edition_id})")
+    flash(f"Modèle « {filename} » chargé avec succès.", "success")
+    return redirect(url_for("scenarios.generate_tests"))
+
+
+@scenarios_bp.route("/tests/templates/delete", methods=["POST"])
+@login_required
+@admin_required
+def delete_test_templates():
+    edition_id = get_current_edition_id()
+    selected_ids = [int(i) for i in request.form.getlist("template_ids") if i.isdigit()]
+    if not selected_ids:
+        flash("Merci de choisir au moins un modèle à supprimer.", "error")
+        return redirect(url_for("scenarios.generate_tests"))
+
+    to_delete = TestTemplate.query.filter(
+        TestTemplate.edition_id == edition_id, TestTemplate.id.in_(selected_ids)
+    ).all()
+    deleted = len(to_delete)
+    names = ", ".join(t.filename for t in to_delete)
+
+    ids = [t.id for t in to_delete]
+    TestFile.query.filter(TestFile.source_template_id.in_(ids)).update(
+        {"source_template_id": None}, synchronize_session=False
+    )
+    for template in to_delete:
+        db.session.delete(template)
+    db.session.commit()
+
+    _log("Suppression de modèle(s) de fichier test", details=f"{deleted} supprimé(s) (édition {edition_id}) : {names}")
+    flash(f"{deleted} modèle(s) supprimé(s).", "success")
+    return redirect(url_for("scenarios.generate_tests"))
+
+
+@scenarios_bp.route("/tests/new", methods=["POST"])
+@login_required
+def create_test_file():
+    edition_id = get_current_edition_id()
+    edition = get_edition(edition_id)
+    test_template_id = request.form.get("test_template_id", "").strip()
+    participant_id = request.form.get("participant_id", "").strip()
+    language = request.form.get("language", "").strip()
+
+    if not test_template_id.isdigit() or not participant_id.isdigit() or language not in LANGUAGE_LABELS:
+        flash("Merci de choisir un modèle de fichier test, un participant et une langue.", "error")
+        return redirect(url_for("scenarios.generate_tests"))
+
+    test_template = TestTemplate.query.filter_by(id=int(test_template_id), edition_id=edition_id).first()
+    participant = Participant.query.filter_by(id=int(participant_id), edition_id=edition_id).first()
+    if not test_template or not participant:
+        flash("Modèle ou participant introuvable pour cette édition.", "error")
+        return redirect(url_for("scenarios.generate_tests"))
+
+    book_name, _problematiques_name = _scenario_names(participant, edition)
+    book_file = ScenarioFile.query.filter_by(
+        edition_id=edition_id, participant_id=participant.id, name=book_name
+    ).first()
+    if not book_file:
+        flash(
+            f"Aucun Book scénario trouvé pour « {participant.participant_name} ». "
+            "Générez-le d'abord dans « Générer des scénarios ».",
+            "error",
+        )
+        return redirect(url_for("scenarios.generate_tests"))
+
+    if book_file.language and book_file.language != language:
+        flash(
+            f"Le Book scénario de « {participant.participant_name} » est en "
+            f"{LANGUAGE_LABELS.get(book_file.language, book_file.language)}, incompatible avec "
+            f"{LANGUAGE_LABELS[language]}. Relancez en choisissant la bonne langue.",
+            "error",
+        )
+        return redirect(url_for("scenarios.generate_tests"))
+
+    if not participant.category or not participant.category.code or not participant.code:
+        flash(
+            f"« {participant.participant_name} » ou sa catégorie n'a pas de code défini "
+            "(nécessaire pour numéroter les tests).",
+            "error",
+        )
+        return redirect(url_for("scenarios.generate_tests"))
+
+    test_name = _test_file_name(participant, edition, language)
+    test_file = TestFile.query.filter_by(edition_id=edition_id, participant_id=participant.id, name=test_name).first()
+    if not test_file:
+        test_ext = os.path.splitext(test_template.filename or "")[1] or ""
+        test_file = TestFile(
+            edition_id=edition_id, name=test_name, language=language,
+            participant_id=participant.id, source_template_id=test_template.id,
+            filename=f"{test_name}{test_ext}", content_type=test_template.content_type,
+            file_data=test_template.file_data, file_size=test_template.file_size,
+            created_by_id=current_user.id,
+        )
+        db.session.add(test_file)
+    elif test_file.language and test_file.language != language:
+        flash(
+            f"Le fichier test existant de « {participant.participant_name} » est déjà en "
+            f"{LANGUAGE_LABELS.get(test_file.language, test_file.language)}, incompatible avec "
+            f"{LANGUAGE_LABELS[language]}.",
+            "error",
+        )
+        return redirect(url_for("scenarios.generate_tests"))
+    if not test_file.language:
+        test_file.language = language
+
+    try:
+        new_data, added = test_generation.generate_test_rows(
+            test_file.file_data, book_file.file_data, participant.participant_name,
+            participant.category.code, participant.code,
+        )
+    except test_generation.TestGenerationError as exc:
+        db.session.rollback()
+        flash(f"Génération impossible : {exc}", "error")
+        return redirect(url_for("scenarios.generate_tests"))
+
+    test_file.file_data = new_data
+    test_file.file_size = len(new_data)
+    db.session.commit()
+
+    _log(
+        "Génération de fichier test", details=f"{added} ligne(s) pour {participant.participant_name} (édition {edition_id})",
+    )
+    if added:
+        flash(f"{added} ligne(s) de test ajoutée(s) dans « {test_name} ».", "success")
+    else:
+        flash(
+            f"Aucune nouvelle ligne à ajouter dans « {test_name} » (tous les scénarios/canaux étaient déjà générés).",
+            "success",
+        )
+    return redirect(url_for("scenarios.generate_tests"))
+
+
+@scenarios_bp.route("/tests/<int:file_id>/download", methods=["GET"])
+@login_required
+def download_test_file(file_id):
+    edition_id = get_current_edition_id()
+    test_file = TestFile.query.filter_by(id=file_id, edition_id=edition_id).first()
+    if not test_file:
+        return "Fichier introuvable pour cette édition.", 404
+
+    return send_file(
+        io.BytesIO(test_file.file_data), mimetype=test_file.content_type or "application/octet-stream",
+        as_attachment=True, download_name=test_file.filename or test_file.name,
+    )
+
+
+@scenarios_bp.route("/tests/delete", methods=["POST"])
+@login_required
+@admin_required
+def delete_test_files():
+    edition_id = get_current_edition_id()
+    selected_ids = [int(i) for i in request.form.getlist("selected_ids") if i.isdigit()]
+    if not selected_ids:
+        flash("Merci de choisir au moins un fichier à supprimer.", "error")
+        return redirect(url_for("scenarios.generate_tests"))
+
+    to_delete = TestFile.query.filter(TestFile.edition_id == edition_id, TestFile.id.in_(selected_ids)).all()
+    deleted = len(to_delete)
+    names = ", ".join(f.name for f in to_delete)
+    for f in to_delete:
+        db.session.delete(f)
+    db.session.commit()
+
+    _log("Suppression de fichier(s) test", details=f"{deleted} supprimé(s) (édition {edition_id}) : {names}")
+    flash(f"{deleted} fichier(s) supprimé(s).", "success")
+    return redirect(url_for("scenarios.generate_tests"))

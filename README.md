@@ -976,6 +976,41 @@ ALTER TABLE scenario_file ADD COLUMN IF NOT EXISTS language VARCHAR(5);
 ALTER TABLE scenario_file ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;
 ```
 
+## Étape 24 — Gestion des scénarios : Générer les tests
+
+Reprend la structure à deux tableaux de « Générer des scénarios » :
+
+- **Modèles de fichiers test chargés** : un seul type de modèle (Excel
+  uniquement), avec vérification au chargement qu'il ne contient **que la
+  ligne d'en-tête** (aucune donnée à partir de la ligne 2, sinon rejet).
+  Boutons « Charger modèle » / « Supprimer modèle » (admin, popup à cases
+  à cocher + confirmation, comme pour les scénarios).
+- **Fichiers test** : tableau (case à cocher, nom, langue, dernière mise à
+  jour, Télécharger) avec défilement vertical, boutons **« Générer fichier
+  test »** et **« Supprimer »** — pas de chargement direct pour ce
+  tableau (contrairement aux fichiers scénarios).
+- **Générer fichier test** exige au moins un modèle de fichier test et un
+  Book scénario pour le participant choisi (sinon message d'erreur) ; la
+  popup demande le modèle, le participant (uniquement ceux ayant déjà un
+  Book scénario) et la langue — refusée si elle ne correspond pas à la
+  langue du Book scénario du participant ou du fichier test déjà existant.
+- **Génération (synchrone, pas de recherche web)** : pour chaque scénario
+  du Book scénario (feuille « step 1 »), duplique la ligne en autant de
+  tests que demandé par canal — colonnes **H** (Téléphone, plage
+  1200-1299), **I** (E-mail, 1300-1349), **J** (Navigation Internet,
+  1350-1364), **K** (Réseaux sociaux, 1400-1409), **L** (Chat,
+  1410-1419). Colonnes du fichier test remplies : A Participant, B Id Test
+  Mystère (`<code catégorie><code participant><numéro de plage>`, ex.
+  `04121200`), C Scénarii, D Canal, E Prospect/Client, I Contexte, J
+  Question, K Réponse attendue — F, G, H, L à P jamais touchées.
+  **Idempotent** : relancer sur un fichier déjà enrichi ne duplique pas
+  les couples (scénario, canal) déjà générés, et continue la numérotation
+  à partir du numéro le plus élevé déjà utilisé par canal — seuls les
+  nouveaux scénarios/canaux ajoutés depuis la dernière génération sont
+  traités.
+- Nouvelles tables `TestTemplate` / `TestFile` (auto-créées, pas de
+  migration nécessaire).
+
 ## Structure du projet
 
 ```
@@ -1008,10 +1043,11 @@ vcsoy_web/
 │   ├── reports/
 │   │   └── routes.py              # Rapport d'études : liste, modèle, suppression
 │   ├── scenarios/
-│   │   ├── routes.py              # Générer des scénarios : modèles, création, génération IA
+│   │   ├── routes.py              # Générer des scénarios/tests : modèles, création, génération
 │   │   ├── ai_generation.py       # Appel Claude Sonnet 5 (recherche web + génération)
 │   │   ├── excel_utils.py         # Lecture/écriture du Book scénario (feuille "step 1")
-│   │   └── pptx_utils.py          # Lecture/écriture du fichier Problématiques
+│   │   ├── pptx_utils.py          # Lecture/écriture du fichier Problématiques
+│   │   └── test_generation.py     # Duplication des scénarios en lignes de test par canal
 │   ├── templates/                # gabarits HTML (Jinja2)
 │   └── static/
 │       ├── css/style.css

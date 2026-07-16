@@ -1,0 +1,208 @@
+{% extends "app_shell.html" %}
+{% block content %}
+<div class="page-block">
+  <h1 class="page-title">Générer les tests</h1>
+  <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-list">
+        {% for category, message in messages %}
+          <p class="flash {{ 'flash-error' if category == 'error' else 'flash-success' }}">{{ message }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <div class="page-header-row">
+    <h2 class="detail-section-title" style="margin: 0;">Modèles de fichiers test chargés</h2>
+    <div class="actions" style="margin: 0;">
+      {% if test_templates and is_admin %}
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('delete-test-templates-popup').showModal()">
+          Supprimer modèle
+        </button>
+      {% endif %}
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('upload-test-template-popup').showModal()">
+        Charger modèle
+      </button>
+    </div>
+  </div>
+
+  {% if not test_templates %}
+    <div class="upload-card">
+      <p class="muted">Aucun modèle de fichier test chargé pour cette édition pour le moment.</p>
+    </div>
+  {% else %}
+    <div class="table-card">
+      <div class="table-row table-header">
+        <div class="col col-scenario-tpl-name">Fichier</div>
+        <div class="col col-scenario-tpl-date">Chargé le</div>
+      </div>
+      {% for t in test_templates %}
+        <div class="table-row">
+          <div class="col col-scenario-tpl-name">{{ t.filename }}</div>
+          <div class="col col-scenario-tpl-date">{{ t.uploaded_at | local_dt if t.uploaded_at else '' }}</div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <h2 class="detail-section-title">Fichiers test</h2>
+  <form method="post" id="test-files-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="table-card table-card-scroll">
+      <div class="table-row table-header">
+        <div class="col col-check"></div>
+        <div class="col col-report-name">Nom du fichier</div>
+        <div class="col col-scenario-tpl-lang">Langue</div>
+        <div class="col col-report-date">Dernière mise à jour</div>
+        <div class="col col-report-dl"></div>
+      </div>
+
+      {% if not test_files %}
+        <div class="table-empty">Aucun fichier test pour cette édition.</div>
+      {% endif %}
+
+      {% for f in test_files %}
+        <div class="table-row">
+          <div class="col col-check">
+            <input type="checkbox" name="selected_ids" value="{{ f.id }}" class="test-file-checkbox">
+          </div>
+          <div class="col col-report-name">{{ f.name }}</div>
+          <div class="col col-scenario-tpl-lang">{{ language_labels.get(f.language, '—') }}</div>
+          <div class="col col-report-date">{{ f.updated_at | local_dt if f.updated_at else (f.created_at | local_dt if f.created_at else '') }}</div>
+          <div class="col col-report-dl">
+            <a href="{{ url_for('scenarios.download_test_file', file_id=f.id) }}" class="btn btn-secondary btn-compact">Télécharger</a>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="actions">
+      <button type="button" class="btn btn-primary" id="test-create-btn"
+              onclick="document.getElementById('create-test-popup').showModal()">
+        Générer fichier test
+      </button>
+      <button type="submit" class="btn btn-secondary" id="test-delete-btn" disabled
+              formaction="{{ url_for('scenarios.delete_test_files') }}"
+              onclick="return confirm('Confirmez-vous la suppression définitive du/des fichier(s) sélectionné(s) ? Cette action est irréversible.');">
+        Supprimer
+      </button>
+    </div>
+  </form>
+</div>
+
+{% if test_templates and is_admin %}
+  <dialog id="delete-test-templates-popup" class="app-dialog">
+    <h3>Supprimer des modèles de fichier test</h3>
+    <p class="dialog-field">Sélectionnez les modèles à supprimer <strong>définitivement</strong>.</p>
+    <form method="post" action="{{ url_for('scenarios.delete_test_templates') }}" id="delete-test-templates-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="compilation-table-wrap">
+        <table class="compilation-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Fichier</th>
+              <th>Chargé le</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in test_templates %}
+              <tr>
+                <td><input type="checkbox" name="template_ids" value="{{ t.id }}"></td>
+                <td>{{ t.filename }}</td>
+                <td>{{ t.uploaded_at | local_dt if t.uploaded_at else '' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <label class="dialog-input-label" style="display: flex; align-items: center; gap: 8px; margin-top: 14px;">
+        <input type="checkbox" required style="width: auto;">
+        <span>Je confirme vouloir supprimer définitivement les modèles sélectionnés.</span>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Fermer</button>
+        <button type="submit" class="btn btn-primary"
+                onclick="return confirm('Confirmez-vous la suppression définitive des modèles sélectionnés ? Cette action est irréversible.');">
+          Supprimer définitivement
+        </button>
+      </div>
+    </form>
+  </dialog>
+{% endif %}
+
+<dialog id="upload-test-template-popup" class="app-dialog">
+  <h3>Charger un modèle de fichier test</h3>
+  <p class="muted">
+    Chargez le fichier modèle (Excel uniquement) depuis votre ordinateur (bureau
+    ou tout autre dossier local). Le modèle ne doit contenir que la ligne
+    d'en-tête (aucune donnée à partir de la ligne 2).
+  </p>
+  <form method="post" action="{{ url_for('scenarios.upload_test_template') }}" enctype="multipart/form-data" class="upload-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="file" name="template_file" accept=".xlsx,.xlsm,.xls" required>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Fermer</button>
+      <button type="submit" class="btn btn-primary">Charger</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="create-test-popup" class="app-dialog">
+  <h3>Générer fichier test</h3>
+  {% if not test_templates or not participants %}
+    <p class="muted">
+      Il manque au moins un modèle de fichier test{% if not participants %} et un Book scénario
+      pour au moins un participant (voir « Générer des scénarios »){% endif %}. Chargez un modèle
+      via « Charger modèle »{% if not participants %} et générez d'abord un Book scénario{% endif %}
+      avant de continuer.
+    </p>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Fermer</button>
+    </div>
+  {% else %}
+    <form method="post" action="{{ url_for('scenarios.create_test_file') }}" id="create-test-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="dialog-input-label">
+        Modèle de fichier test
+        <select name="test_template_id" id="create-test-template" required>
+          <option value="">— Choisir —</option>
+          {% for t in test_templates %}
+            <option value="{{ t.id }}">{{ t.filename }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="dialog-input-label">
+        Participant
+        <select name="participant_id" id="create-test-participant" required>
+          <option value="">— Choisir —</option>
+          {% for p in participants %}
+            <option value="{{ p.id }}">{{ p.participant_name }}{% if p.code %} ({{ p.code }}){% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="dialog-input-label">
+        Langue
+        <select name="language" id="create-test-language" required>
+          <option value="">— Choisir —</option>
+          <option value="fr">Français</option>
+          <option value="en">English</option>
+        </select>
+      </label>
+      <p class="muted" style="font-size: 12px;">
+        Duplique les scénarios déjà générés du Book scénario du participant en lignes de test,
+        selon le nombre indiqué par canal (colonnes H à L). La langue doit correspondre à celle
+        du Book scénario du participant.
+      </p>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Annuler</button>
+        <button type="submit" class="btn btn-primary" id="create-test-submit" disabled>Générer</button>
+      </div>
+    </form>
+  {% endif %}
+</dialog>
+
+<script src="{{ url_for('static', filename='js/tests.js') }}"></script>
+{% endblock %}

@@ -1,7 +1,7 @@
 """
 Manipulation du fichier Excel « Book scénario » (feuille « step 1 »).
 
-Colonnes de la feuille « step 1 » (A à K) :
+Colonnes de la feuille « step 1 » (A à L) :
   A Validation (0/1 — 1 = ligne validée par l'utilisateur, jamais modifiée)
   B Entreprise (nom du participant)
   C Scénarii (numéro, incrémenté)
@@ -9,7 +9,9 @@ Colonnes de la feuille « step 1 » (A à K) :
   E Contexte
   F Question
   G Réponse
-  H-K réservés pour « Générer les tests » (jamais touchés ici)
+  H-L : nombre de tests à générer par canal pour ce scénario (voir
+  « Générer les tests », app/scenarios/test_generation.py) — jamais
+  modifiées par ce module.
 
 La feuille « Recap » n'est jamais lue ni modifiée.
 """
@@ -27,6 +29,12 @@ COL_TYPE = 4
 COL_CONTEXTE = 5
 COL_QUESTION = 6
 COL_REPONSE = 7
+# Nombre de tests à générer par canal (voir test_generation.py) :
+COL_TEST_PHONE = 8    # H — Téléphone
+COL_TEST_MAIL = 9     # I — E-mail
+COL_TEST_WEB = 10     # J — Navigation Internet
+COL_TEST_RS = 11      # K — Réseaux sociaux
+COL_TEST_CHAT = 12    # L — Chat
 
 HEADER_ROW = 1
 
@@ -35,7 +43,7 @@ class BookWorkbookError(Exception):
     pass
 
 
-def _find_step1_sheet(wb):
+def find_step1_sheet(wb):
     if STEP1_SHEET_NAME in wb.sheetnames:
         return wb[STEP1_SHEET_NAME]
     normalized_target = STEP1_SHEET_NAME.strip().lower()
@@ -52,7 +60,7 @@ def load_book_state(file_data):
     les lignes où la colonne A vaut 1 (les plus récentes en dernier).
     """
     wb = openpyxl.load_workbook(io.BytesIO(file_data))
-    sheet = _find_step1_sheet(wb)
+    sheet = find_step1_sheet(wb)
 
     validated_examples = []
     last_row = HEADER_ROW
@@ -89,7 +97,7 @@ def append_scenarios(file_data, participant_name, scenarios):
     ordre que `scenarios`.
     """
     wb = openpyxl.load_workbook(io.BytesIO(file_data))
-    sheet = _find_step1_sheet(wb)
+    sheet = find_step1_sheet(wb)
 
     _, next_row, last_scenario_num = load_book_state(file_data)
 
