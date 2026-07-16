@@ -809,6 +809,7 @@ a { text-decoration: none; color: inherit; }
 .col-invoice-desc { flex: 1 1 auto; }
 .col-invoice-amount { flex: 0 0 130px; text-align: right; }
 .invoice-heading { font-weight: 700; }
+.invoice-bullet { padding-left: 28px; }
 
 .invoice-totals-grid {
   max-width: 320px;

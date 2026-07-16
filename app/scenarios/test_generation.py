@@ -41,7 +41,7 @@ CHANNEL_SPECS = [
     (excel_utils.COL_TEST_MAIL, "E-mail", 1300, 1349),
     (excel_utils.COL_TEST_WEB, "Navigation Internet", 1350, 1364),
     (excel_utils.COL_TEST_RS, "Réseaux sociaux", 1400, 1409),
-    (excel_utils.COL_TEST_CHAT, "Chat", 1410, 1419),
+    (excel_utils.COL_TEST_CHAT, "Chat", 1450, 1459),
 ]
 
 

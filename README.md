@@ -999,7 +999,7 @@ Reprend la structure à deux tableaux de « Générer des scénarios » :
   tests que demandé par canal — colonnes **H** (Téléphone, plage
   1200-1299), **I** (E-mail, 1300-1349), **J** (Navigation Internet,
   1350-1364), **K** (Réseaux sociaux, 1400-1409), **L** (Chat,
-  1410-1419). Colonnes du fichier test remplies : A Participant, B Id Test
+  1450-1459). Colonnes du fichier test remplies : A Participant, B Id Test
   Mystère (`<code catégorie><code participant><numéro de plage>`, ex.
   `04121200`), C Scénarii, D Canal, E Prospect/Client, I Contexte, J
   Question, K Réponse attendue — F, G, H, L à P jamais touchées.
@@ -1010,6 +1010,19 @@ Reprend la structure à deux tableaux de « Générer des scénarios » :
   traités.
 - Nouvelles tables `TestTemplate` / `TestFile` (auto-créées, pas de
   migration nécessaire).
+
+## Étape 25 — Corrections : plage Chat, présentation du produit VCSOY
+
+- **Plage de test Chat** : corrigée de 1410-1419 (choix provisoire fait en
+  attendant confirmation) à **1450-1459**, qui correspond à la plage déjà
+  utilisée par le contrôle du fichier de résultats (`app/results/validation.py`).
+- **Facturation — produit VCSOY** : le prix/la quantité de l'ensemble sont
+  désormais portés par la ligne intitulé (« Élu Service à la Clientèle de
+  l'Année (VCSOY) Édition ... »), et non plus par la 1ère des 3 puces
+  descriptives. Les 3 puces sont décalées à droite (indentation) pour bien
+  montrer qu'elles font partie du produit ci-dessus plutôt que d'être des
+  produits distincts — appliqué à l'écran, dans le PDF et dans le fichier
+  Excel généré.
 
 ## Structure du projet
 

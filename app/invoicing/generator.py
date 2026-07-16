@@ -31,15 +31,20 @@ FIRST_ITEM_ROW = 27
 MAX_ITEM_ROW = 35
 
 # Mappage fixe des lignes, répliquant exactement la structure du modèle
-# fourni : le produit VCSOY occupe toujours les lignes 27-30 (intitulé +
-# 3 puces, une seule quantité/prix portée par la 1ère puce, ligne 28).
+# fourni : le produit VCSOY occupe toujours les lignes 27-30 (intitulé,
+# ligne 27, portant la quantité/le prix de l'ensemble, puis 3 puces
+# descriptives décalées à droite, lignes 28-30, sans montant propre).
 # Les produits indépendants (Right to use trademark, Goodies, ...) prennent
 # ensuite les lignes suivantes déjà fusionnées dans le modèle (31, 33, 34,
 # 35 — la ligne 32 sert d'espacement et n'est pas utilisée).
 ROW_VCSOY_HEADING = 27
-ROW_VCSOY_PRICED_BULLET = 28
-ROW_VCSOY_PLAIN_BULLETS = [29, 30]
+ROW_VCSOY_PLAIN_BULLETS = [28, 29, 30]
 STANDALONE_ROWS = [31, 33, 34, 35]
+
+# Décalage visuel (indentation Excel native) des puces descriptives du
+# produit VCSOY, pour bien montrer qu'elles font partie de la ligne
+# intitulé au-dessus plutôt que d'être des produits distincts.
+BULLET_INDENT = 2
 
 # Taille cible du logo dans le classeur Excel (en pixels) et dans le PDF
 # (en points) — la largeur est recalculée pour chaque logo afin de
@@ -186,10 +191,16 @@ def fill_invoice_xlsx(invoice):
     ws["W16"] = city_line
     ws["W17"] = invoice.bill_to_country
 
-    def _write_description(row, text, bold):
+    def _write_description(row, text, bold, indent=0):
         cell = ws[f"A{row}"]
         cell.value = text
         cell.font = Font(name=cell.font.name, size=cell.font.size, bold=bold)
+        if indent:
+            existing = cell.alignment
+            cell.alignment = Alignment(
+                horizontal=existing.horizontal, vertical=existing.vertical,
+                wrap_text=existing.wrap_text, indent=indent,
+            )
 
     def _write_amounts(row, quantity, unit_price, total):
         ws[f"U{row}"] = quantity
@@ -203,13 +214,16 @@ def fill_invoice_xlsx(invoice):
         role = item.get("role")
         if role == "vcsoy_heading":
             _write_description(ROW_VCSOY_HEADING, item["description"], bold=True)
-        elif role == "vcsoy_priced":
-            _write_description(ROW_VCSOY_PRICED_BULLET, item["description"], bold=False)
-            _write_amounts(ROW_VCSOY_PRICED_BULLET, item["quantity"], item["unit_price"], item["total"])
+            _write_amounts(ROW_VCSOY_HEADING, item["quantity"], item["unit_price"], item["total"])
         elif role == "vcsoy_plain":
             row = next(plain_bullet_rows, None)
             if row is not None:
-                _write_description(row, item["description"], bold=False)
+                _write_description(row, item["description"], bold=False, indent=BULLET_INDENT)
+                # Une des 3 lignes de puces occupait auparavant la ligne
+                # portant le prix dans le modèle (avec une valeur d'exemple
+                # figée) : on l'efface explicitement, ces lignes n'ayant
+                # plus de montant propre.
+                _write_amounts(row, None, None, None)
         elif role == "standalone":
             row = next(standalone_rows, None)
             if row is not None:
@@ -313,11 +327,24 @@ def render_invoice_pdf(invoice):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]
     for i, item in enumerate(invoice.line_items, start=1):
-        if item.get("is_heading"):
-            table_data.append([item["description"], "", "", ""])
-            style_commands.append(("SPAN", (0, i), (-1, i)))
+        role = item.get("role")
+        if role == "vcsoy_heading":
+            # Intitulé du produit VCSOY, portant sa quantité/prix/total.
+            table_data.append([
+                item["description"],
+                f"{item['quantity']:.2f}",
+                f"{item['unit_price']:,.2f} $",
+                f"{item['total']:,.2f} $",
+            ])
             style_commands.append(("FONTNAME", (0, i), (0, i), "Helvetica-Bold"))
             style_commands.append(("ALIGN", (0, i), (0, i), "LEFT"))
+        elif role == "vcsoy_plain":
+            # Puce descriptive du produit VCSOY, sans prix propre : décalée
+            # à droite pour bien montrer qu'elle fait partie de l'intitulé
+            # ci-dessus plutôt que d'être un produit distinct.
+            table_data.append(["- " + item["description"], "", "", ""])
+            style_commands.append(("ALIGN", (0, i), (0, i), "LEFT"))
+            style_commands.append(("LEFTPADDING", (0, i), (0, i), 24))
         elif "total" in item:
             table_data.append([
                 "- " + item["description"],
@@ -327,8 +354,7 @@ def render_invoice_pdf(invoice):
             ])
             style_commands.append(("ALIGN", (0, i), (0, i), "LEFT"))
         else:
-            # Ligne descriptive sans prix propre (puce faisant partie d'un
-            # produit dont le prix est porté par une autre ligne).
+            # Ligne descriptive sans prix propre (cas générique restant).
             table_data.append(["- " + item["description"], "", "", ""])
             style_commands.append(("ALIGN", (0, i), (0, i), "LEFT"))
 

@@ -74,7 +74,7 @@ def _invoice_edit_payload(invoice):
     products_data = []
     vcsoy_price = None
     for item in (invoice.line_items or []):
-        if item.get("role") == "vcsoy_priced":
+        if item.get("role") == "vcsoy_heading":
             vcsoy_price = item.get("unit_price")
         elif item.get("role") == "standalone" and item.get("product_id"):
             products_data.append({"product_id": item["product_id"], "unit_price": item.get("unit_price")})
@@ -208,20 +208,14 @@ def _validate_and_build(form, edition_id, edition, require_participant):
         amount = prices[VCSOY_PACKAGE_ID]
         bullets = vcsoy_bullets(data["language"])
         # Un seul produit, indissociable, présenté sur 4 lignes : l'intitulé
-        # (sans prix), puis les 3 puces descriptives. Le prix et la quantité
-        # de l'ensemble sont portés par la 1ère puce uniquement (comme dans
-        # le modèle fourni), les 2 autres puces restant de simples lignes
-        # descriptives sans montant.
+        # porte le prix et la quantité de l'ensemble, suivi des 3 puces
+        # descriptives (décalées à droite), sans montant propre.
         line_items.append({
             "role": "vcsoy_heading",
             "description": vcsoy_heading(data["language"], edition_id),
-            "is_heading": True,
+            "is_heading": True, "quantity": 1, "unit_price": amount, "total": amount,
         })
-        line_items.append({
-            "role": "vcsoy_priced",
-            "description": bullets[0],
-            "is_heading": False, "quantity": 1, "unit_price": amount, "total": amount,
-        })
+        line_items.append({"role": "vcsoy_plain", "description": bullets[0], "is_heading": False})
         line_items.append({"role": "vcsoy_plain", "description": bullets[1], "is_heading": False})
         line_items.append({"role": "vcsoy_plain", "description": bullets[2], "is_heading": False})
 
