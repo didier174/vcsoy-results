@@ -195,12 +195,15 @@ def fill_invoice_xlsx(invoice):
         cell = ws[f"A{row}"]
         cell.value = text
         cell.font = Font(name=cell.font.name, size=cell.font.size, bold=bold)
-        if indent:
-            existing = cell.alignment
-            cell.alignment = Alignment(
-                horizontal=existing.horizontal, vertical=existing.vertical,
-                wrap_text=existing.wrap_text, indent=indent,
-            )
+        # Toujours réécrire l'indentation (même à 0) : sans ça, une ligne
+        # sans indent hérite silencieusement de l'indentation résiduelle du
+        # modèle Excel d'origine à cette position (ex. Goodies aligné comme
+        # une puce du produit VCSOY plutôt qu'au début de sa propre ligne).
+        existing = cell.alignment
+        cell.alignment = Alignment(
+            horizontal=existing.horizontal, vertical=existing.vertical,
+            wrap_text=existing.wrap_text, indent=indent,
+        )
 
     def _write_amounts(row, quantity, unit_price, total):
         ws[f"U{row}"] = quantity
@@ -346,12 +349,16 @@ def render_invoice_pdf(invoice):
             style_commands.append(("ALIGN", (0, i), (0, i), "LEFT"))
             style_commands.append(("LEFTPADDING", (0, i), (0, i), 24))
         elif "total" in item:
+            # Produit indépendant (Right to use trademark, Goodies, ...) :
+            # une seule ligne, mise en gras comme l'intitulé du VCSOY, sans
+            # tiret puisqu'il n'y a pas de puces de détail en dessous.
             table_data.append([
-                "- " + item["description"],
+                item["description"],
                 f"{item['quantity']:.2f}",
                 f"{item['unit_price']:,.2f} $",
                 f"{item['total']:,.2f} $",
             ])
+            style_commands.append(("FONTNAME", (0, i), (0, i), "Helvetica-Bold"))
             style_commands.append(("ALIGN", (0, i), (0, i), "LEFT"))
         else:
             # Ligne descriptive sans prix propre (cas générique restant).

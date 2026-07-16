@@ -40,7 +40,7 @@
     </div>
     {% for item in invoice.line_items %}
       <div class="table-row">
-        <div class="col col-invoice-desc {{ 'invoice-heading' if item.is_heading else '' }} {{ 'invoice-bullet' if item.role == 'vcsoy_plain' else '' }}">{{ item.description }}</div>
+        <div class="col col-invoice-desc {{ 'invoice-heading' if item.is_heading or item.role == 'standalone' else '' }} {{ 'invoice-bullet' if item.role == 'vcsoy_plain' else '' }}">{{ item.description }}</div>
         <div class="col col-invoice-amount">{{ "%.2f"|format(item.unit_price) ~ " $" if item.unit_price is defined else "" }}</div>
         <div class="col col-invoice-amount">{{ "%.2f"|format(item.total) ~ " $" if item.total is defined else "" }}</div>
       </div>
