@@ -88,16 +88,20 @@ def _seed_default_products():
     Reprend dans le catalogue (modèle Product) les 2 produits qui existaient
     en dur avant l'introduction du catalogue : le droit d'utilisation de la
     marque VCSOY, et « Goodies » renommé « Pack Goodies initial » à 0 $ (voir
-    demande explicite de l'utilisateur). Ne s'exécute qu'une fois : si un
-    produit du même titre existe déjà, on ne le recrée pas.
+    demande explicite de l'utilisateur). Chaque produit du catalogue étant
+    désormais rattaché à une seule langue, on crée une entrée fr et une
+    entrée en pour chacun (ils étaient auparavant bilingues). Ne s'exécute
+    qu'une fois : si un produit du même titre existe déjà, on ne le recrée pas.
     """
     from app.models import Product
 
     defaults = [
-        ("Droit d'utilisation de la marque VCSOY à titre de gagnant pendant un an", 0.0),
-        ("Pack Goodies initial", 0.0),
+        ("Droit d'utilisation de la marque VCSOY à titre de gagnant pendant un an", "fr", 0.0),
+        ("Right to use the trademark VCSOY as winner during one year", "en", 0.0),
+        ("Pack Goodies initial", "fr", 0.0),
+        ("Initial Goodies Pack", "en", 0.0),
     ]
-    for title, price in defaults:
+    for title, language, price in defaults:
         if not Product.query.filter_by(title=title).first():
-            db.session.add(Product(title=title, price=price))
+            db.session.add(Product(title=title, language=language, price=price))
     db.session.commit()

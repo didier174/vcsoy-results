@@ -5,6 +5,29 @@
  * sans conséquence ici puisque le serveur ignore de toute façon les
  * produits non sélectionnés.
  */
+/*
+ * Un produit du catalogue n'appartient qu'à une seule langue (fr ou en) :
+ * on n'affiche (et ne rend sélectionnable) que les produits correspondant
+ * à la langue de facture actuellement choisie. Décoche et désactive
+ * automatiquement un produit masqué par le changement de langue.
+ */
+function _applyProductLanguageFilter(languageSelectEl) {
+  if (!languageSelectEl) return;
+  var lang = languageSelectEl.value;
+  document.querySelectorAll(".product-entry").forEach(function (entry) {
+    var entryLang = entry.dataset.language;
+    var visible = !entryLang || !lang || entryLang === lang;
+    entry.style.display = visible ? "" : "none";
+    if (!visible) {
+      var checkbox = entry.querySelector(".product-checkbox");
+      if (checkbox && checkbox.checked) {
+        checkbox.checked = false;
+        checkbox.dispatchEvent(new Event("change"));
+      }
+    }
+  });
+}
+
 document.addEventListener("DOMContentLoaded", function () {
   document.querySelectorAll(".product-checkbox").forEach(function (checkbox) {
     var row = checkbox.closest(".product-row");
@@ -19,6 +42,14 @@ document.addEventListener("DOMContentLoaded", function () {
     checkbox.addEventListener("change", update);
     update();
   });
+
+  var languageSelect = document.getElementById("language");
+  if (languageSelect) {
+    _applyProductLanguageFilter(languageSelect);
+    languageSelect.addEventListener("change", function () {
+      _applyProductLanguageFilter(languageSelect);
+    });
+  }
 
   // --- Auto-remplissage du nom du client et de l'adresse de facturation
   // (page de création) à partir du participant sélectionné. Reste

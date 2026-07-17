@@ -78,6 +78,7 @@
     <div class="table-row table-header">
       <div class="col col-check"></div>
       <div class="col col-catalog-title">Produit</div>
+      <div class="col col-catalog-lang">Langue</div>
       <div class="col col-catalog-price">Prix</div>
     </div>
     {% if not products %}
@@ -94,6 +95,7 @@
             <ul class="product-bullets">{% for b in p.bullets() %}<li>{{ b }}</li>{% endfor %}</ul>
           {% endif %}
         </div>
+        <div class="col col-catalog-lang">{{ 'Français' if p.language == 'fr' else 'English' }}</div>
         <div class="col col-catalog-price">{{ "%.2f"|format(p.price or 0) }} $</div>
       </div>
     {% endfor %}
@@ -117,6 +119,14 @@
     <label class="dialog-input-label">
       Titre *
       <input type="text" name="title" id="product-form-title-input" required>
+    </label>
+    <label class="dialog-input-label">
+      Langue de facturation *
+      <select name="language" id="product-form-language" required>
+        <option value="">— Sélectionner —</option>
+        <option value="fr">Français</option>
+        <option value="en">English</option>
+      </select>
     </label>
     <label class="dialog-input-label">
       Puce 1 (facultatif)
@@ -221,19 +231,21 @@
 
       <div class="product-group">
         {% for p in products %}
-          <div class="product-row">
-            <label class="product-checkbox-label">
-              <input type="checkbox" class="edit-product-checkbox" name="product_cat_{{ p.id }}" data-product-id="{{ p.id }}">
-              {{ p.title }}
-            </label>
-            <input type="text" name="price_cat_{{ p.id }}" placeholder="Montant avant taxes ($)"
-                   class="product-price-input" disabled>
-            <input type="text" name="qty_cat_{{ p.id }}" placeholder="Qté"
-                   class="product-qty-input" disabled>
+          <div class="product-entry" data-language="{{ p.language }}">
+            <div class="product-row">
+              <label class="product-checkbox-label">
+                <input type="checkbox" class="edit-product-checkbox" name="product_cat_{{ p.id }}" data-product-id="{{ p.id }}">
+                {{ p.title }} <span class="product-label-en">({{ 'Français' if p.language == 'fr' else 'English' }})</span>
+              </label>
+              <input type="text" name="price_cat_{{ p.id }}" placeholder="Montant avant taxes ($)"
+                     class="product-price-input" disabled>
+              <input type="text" name="qty_cat_{{ p.id }}" placeholder="Qté"
+                     class="product-qty-input" disabled>
+            </div>
+            {% if p.bullets() %}
+              <ul class="product-bullets">{% for b in p.bullets() %}<li>{{ b }}</li>{% endfor %}</ul>
+            {% endif %}
           </div>
-          {% if p.bullets() %}
-            <ul class="product-bullets">{% for b in p.bullets() %}<li>{{ b }}</li>{% endfor %}</ul>
-          {% endif %}
         {% endfor %}
       </div>
     </fieldset>

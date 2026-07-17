@@ -28,6 +28,29 @@ function _resetEditProducts() {
   });
 }
 
+/*
+ * Un produit du catalogue n'appartient qu'à une seule langue (fr ou en) :
+ * on n'affiche (et ne rend sélectionnable) que les produits correspondant
+ * à la langue de facture actuellement choisie. Décoche et désactive
+ * automatiquement un produit masqué par le changement de langue.
+ */
+function _applyProductLanguageFilter(languageSelectEl, entrySelector, checkboxSelector) {
+  if (!languageSelectEl) return;
+  var lang = languageSelectEl.value;
+  document.querySelectorAll(entrySelector).forEach(function (entry) {
+    var entryLang = entry.dataset.language;
+    var visible = !entryLang || !lang || entryLang === lang;
+    entry.style.display = visible ? "" : "none";
+    if (!visible) {
+      var checkbox = entry.querySelector(checkboxSelector);
+      if (checkbox && checkbox.checked) {
+        checkbox.checked = false;
+        checkbox.dispatchEvent(new Event("change"));
+      }
+    }
+  });
+}
+
 function openEditInvoiceDialog(invoiceId) {
   var data = _getInvoiceData(invoiceId);
   if (!data) return;
@@ -35,7 +58,9 @@ function openEditInvoiceDialog(invoiceId) {
   var form = document.getElementById("edit-invoice-form");
   form.action = "/invoicing/" + invoiceId + "/update";
 
-  document.getElementById("edit_language").value = data.language;
+  var editLanguageSelect = document.getElementById("edit_language");
+  editLanguageSelect.value = data.language;
+  _applyProductLanguageFilter(editLanguageSelect, "#edit-invoice-popup .product-entry", ".edit-product-checkbox");
   document.getElementById("edit_invoice_number").value = data.invoice_number;
   document.getElementById("edit_customer_number").value = data.customer_number;
   document.getElementById("edit_customer_name").value = data.customer_name;
@@ -101,6 +126,7 @@ function openAddProductDialog() {
   form.action = "/invoicing/products/add";
   document.getElementById("product-form-title").textContent = "Ajouter un produit";
   document.getElementById("product-form-title-input").value = "";
+  document.getElementById("product-form-language").value = "";
   document.getElementById("product-form-bullet1").value = "";
   document.getElementById("product-form-bullet2").value = "";
   document.getElementById("product-form-bullet3").value = "";
@@ -120,6 +146,7 @@ function triggerModifyProduct() {
   form.action = "/invoicing/products/" + productId + "/update";
   document.getElementById("product-form-title").textContent = "Modifier un produit";
   document.getElementById("product-form-title-input").value = product.title;
+  document.getElementById("product-form-language").value = product.language;
   document.getElementById("product-form-bullet1").value = product.bullet1;
   document.getElementById("product-form-bullet2").value = product.bullet2;
   document.getElementById("product-form-bullet3").value = product.bullet3;
@@ -142,4 +169,11 @@ document.addEventListener("DOMContentLoaded", function () {
     checkbox.addEventListener("change", _updateCatalogButtonStates);
   });
   _updateCatalogButtonStates();
+
+  var editLanguageSelect = document.getElementById("edit_language");
+  if (editLanguageSelect) {
+    editLanguageSelect.addEventListener("change", function () {
+      _applyProductLanguageFilter(editLanguageSelect, "#edit-invoice-popup .product-entry", ".edit-product-checkbox");
+    });
+  }
 });

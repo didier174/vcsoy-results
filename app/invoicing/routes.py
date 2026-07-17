@@ -81,12 +81,40 @@ def _products_json(products):
     return {
         str(p.id): {
             "title": p.title,
+            "language": p.language or "fr",
             "bullet1": p.bullet1 or "",
             "bullet2": p.bullet2 or "",
             "bullet3": p.bullet3 or "",
             "price": p.price or 0,
         }
         for p in products
+    }
+
+
+def _validate_product_form(form):
+    """Valide les champs communs à l'ajout et à la modification d'un
+    produit du catalogue. Retourne (error, data)."""
+    title = form.get("title", "").strip()
+    if not title:
+        return "Le titre du produit est obligatoire.", None
+
+    language = form.get("language", "").strip()
+    if language not in ("fr", "en"):
+        return "Merci de choisir la langue (Français ou English) du produit.", None
+
+    bullets = [form.get(f"bullet{i}", "").strip() for i in (1, 2, 3)]
+    raw_price = form.get("price", "").strip().replace(",", ".")
+    try:
+        price = float(raw_price) if raw_price else 0.0
+        if price < 0:
+            raise ValueError()
+    except ValueError:
+        return "Prix de produit invalide.", None
+
+    return None, {
+        "title": title, "language": language,
+        "bullet1": bullets[0] or None, "bullet2": bullets[1] or None, "bullet3": bullets[2] or None,
+        "price": price,
     }
 
 
@@ -204,7 +232,13 @@ def _validate_and_build(form, edition_id, edition, require_participant):
 
     selected_vcsoy = bool(form.get(f"product_{VCSOY_PACKAGE_ID}"))
     all_products = _all_products()
-    selected_products = [p for p in all_products if form.get(f"product_cat_{p.id}")]
+    # Un produit n'est proposé que dans sa propre langue (voir le filtrage
+    # JS sur la page) : on l'ignore ici s'il ne correspond pas à la langue
+    # de la facture, par sécurité si jamais coché malgré tout.
+    selected_products = [
+        p for p in all_products
+        if form.get(f"product_cat_{p.id}") and p.language == data["language"]
+    ]
 
     if not selected_vcsoy and not selected_products:
         errors.append("Merci de sélectionner au moins un produit à facturer.")
@@ -319,26 +353,14 @@ def _render_list_with_error(error):
 @invoicing_bp.route("/products/add", methods=["POST"])
 @login_required
 def add_product():
-    title = request.form.get("title", "").strip()
-    if not title:
-        return _render_list_with_error("Le titre du produit est obligatoire.")
+    error, data = _validate_product_form(request.form)
+    if error:
+        return _render_list_with_error(error)
 
-    bullets = [request.form.get(f"bullet{i}", "").strip() for i in (1, 2, 3)]
-    raw_price = request.form.get("price", "").strip().replace(",", ".")
-    try:
-        price = float(raw_price) if raw_price else 0.0
-        if price < 0:
-            raise ValueError()
-    except ValueError:
-        return _render_list_with_error("Prix de produit invalide.")
-
-    db.session.add(Product(
-        title=title, bullet1=bullets[0] or None, bullet2=bullets[1] or None, bullet3=bullets[2] or None,
-        price=price, created_by_id=current_user.id,
-    ))
+    db.session.add(Product(created_by_id=current_user.id, **data))
     db.session.commit()
 
-    _log("Ajout d'un produit au catalogue", details=title)
+    _log("Ajout d'un produit au catalogue", details=data["title"])
     return redirect(url_for("invoicing.list_invoices"))
 
 
@@ -349,27 +371,15 @@ def update_product(product_id):
     if not product:
         return _render_list_with_error("Produit introuvable.")
 
-    title = request.form.get("title", "").strip()
-    if not title:
-        return _render_list_with_error("Le titre du produit est obligatoire.")
+    error, data = _validate_product_form(request.form)
+    if error:
+        return _render_list_with_error(error)
 
-    bullets = [request.form.get(f"bullet{i}", "").strip() for i in (1, 2, 3)]
-    raw_price = request.form.get("price", "").strip().replace(",", ".")
-    try:
-        price = float(raw_price) if raw_price else 0.0
-        if price < 0:
-            raise ValueError()
-    except ValueError:
-        return _render_list_with_error("Prix de produit invalide.")
-
-    product.title = title
-    product.bullet1 = bullets[0] or None
-    product.bullet2 = bullets[1] or None
-    product.bullet3 = bullets[2] or None
-    product.price = price
+    for key, value in data.items():
+        setattr(product, key, value)
     db.session.commit()
 
-    _log("Modification d'un produit du catalogue", details=title)
+    _log("Modification d'un produit du catalogue", details=data["title"])
     return redirect(url_for("invoicing.list_invoices"))
 
 

@@ -206,6 +206,9 @@ class Product(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(255), nullable=False)
+    # Un produit s'affiche dans une seule langue (fr ou en) : un produit
+    # bilingue nécessite deux entrées distinctes dans le catalogue.
+    language = db.Column(db.String(5), nullable=False, default="fr")
     bullet1 = db.Column(db.String(255))
     bullet2 = db.Column(db.String(255))
     bullet3 = db.Column(db.String(255))

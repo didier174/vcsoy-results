@@ -20,7 +20,7 @@
       <legend>Informations générales</legend>
 
       <label>Langue de la facture *
-        <select name="language" required>
+        <select name="language" id="language" required>
           <option value="">— Sélectionner —</option>
           <option value="fr" {{ 'selected' if form_values.get('language') == 'fr' else '' }}>Français</option>
           <option value="en" {{ 'selected' if form_values.get('language') == 'en' else '' }}>English</option>
@@ -96,21 +96,24 @@
           <p class="muted">Aucun produit dans le catalogue — ajoutez-en depuis « Liste des produits », sur la page des factures.</p>
         {% endif %}
         {% for p in products %}
-          <div class="product-row">
-            <label class="product-checkbox-label">
-              <input type="checkbox" class="product-checkbox" name="product_cat_{{ p.id }}" data-product-id="{{ p.id }}"
-                     {{ 'checked' if form_values.get('product_cat_' ~ p.id) else '' }}>
-              {{ p.title }}
-            </label>
-            <input type="text" name="price_cat_{{ p.id }}" placeholder="Montant avant taxes ($)"
-                   value="{{ form_values.get('price_cat_' ~ p.id) or ('%.2f'|format(p.price or 0)) }}" class="product-price-input">
-            <input type="text" name="qty_cat_{{ p.id }}" placeholder="Qté"
-                   value="{{ form_values.get('qty_cat_' ~ p.id) or '1' }}" class="product-qty-input">
+          <div class="product-entry" data-language="{{ p.language }}">
+            <div class="product-row">
+              <label class="product-checkbox-label">
+                <input type="checkbox" class="product-checkbox" name="product_cat_{{ p.id }}" data-product-id="{{ p.id }}"
+                       {{ 'checked' if form_values.get('product_cat_' ~ p.id) else '' }}>
+                {{ p.title }} <span class="product-label-en">({{ 'Français' if p.language == 'fr' else 'English' }})</span>
+              </label>
+              <input type="text" name="price_cat_{{ p.id }}" placeholder="Montant avant taxes ($)"
+                     value="{{ form_values.get('price_cat_' ~ p.id) or ('%.2f'|format(p.price or 0)) }}" class="product-price-input">
+              <input type="text" name="qty_cat_{{ p.id }}" placeholder="Qté"
+                     value="{{ form_values.get('qty_cat_' ~ p.id) or '1' }}" class="product-qty-input">
+            </div>
+            {% if p.bullets() %}
+              <ul class="product-bullets">{% for b in p.bullets() %}<li>{{ b }}</li>{% endfor %}</ul>
+            {% endif %}
           </div>
-          {% if p.bullets() %}
-            <ul class="product-bullets">{% for b in p.bullets() %}<li>{{ b }}</li>{% endfor %}</ul>
-          {% endif %}
         {% endfor %}
+        <p class="muted product-group-note">Seuls les produits correspondant à la langue de la facture choisie ci-dessus sont proposés.</p>
       </div>
     </fieldset>
 

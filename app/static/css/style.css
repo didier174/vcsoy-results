@@ -812,6 +812,7 @@ a { text-decoration: none; color: inherit; }
 }
 
 .col-catalog-title { flex: 1 1 auto; }
+.col-catalog-lang { flex: 0 0 90px; }
 .col-catalog-price { flex: 0 0 100px; text-align: right; }
 
 .product-bullets {
