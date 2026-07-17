@@ -11,10 +11,12 @@ Génération de la facture, dans les deux formats demandés :
 
 import io
 import os
+from copy import copy
 
 import openpyxl
 from openpyxl.styles import Font, Alignment
 from openpyxl.drawing.image import Image as XLImage
+from openpyxl.utils import range_boundaries, get_column_letter
 from PIL import Image as PILImage
 
 from reportlab.lib import colors
@@ -27,23 +29,29 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "invoice_template.xlsx")
 IMG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "img")
 
-FIRST_ITEM_ROW = 27
-MAX_ITEM_ROW = 35
-
-# Mappage fixe des lignes, répliquant exactement la structure du modèle
-# fourni : le produit VCSOY occupe toujours les lignes 27-30 (intitulé,
-# ligne 27, portant la quantité/le prix de l'ensemble, puis 3 puces
-# descriptives décalées à droite, lignes 28-30, sans montant propre).
-# Les produits indépendants (Right to use trademark, Goodies, ...) prennent
-# ensuite les lignes suivantes déjà fusionnées dans le modèle (31, 33, 34,
-# 35 — la ligne 32 sert d'espacement et n'est pas utilisée).
+# Mappage des lignes, répliquant la structure du modèle fourni : le
+# produit VCSOY occupe toujours les lignes 27-30 (intitulé, ligne 27,
+# portant la quantité/le prix de l'ensemble, puis 3 puces descriptives
+# décalées à droite, lignes 28-30, sans montant propre).
 ROW_VCSOY_HEADING = 27
 ROW_VCSOY_PLAIN_BULLETS = [28, 29, 30]
-STANDALONE_ROWS = [31, 33, 34, 35]
 
-# Décalage visuel (indentation Excel native) des puces descriptives du
-# produit VCSOY, pour bien montrer qu'elles font partie de la ligne
-# intitulé au-dessus plutôt que d'être des produits distincts.
+# Les produits du catalogue (titre + jusqu'à 3 puces chacun, nombre de
+# lignes donc variable) prennent ensuite les lignes déjà formatées dans le
+# modèle (31, 33, 34, 35 — la ligne 32 sert d'espacement). Si plus de
+# lignes sont nécessaires, on en insère juste avant la ligne d'espacement
+# suivante (36), en reproduisant le style de la dernière ligne du modèle
+# (voir _copy_row_style) — le bloc sous-total/TPS/TVQ/total et tout ce qui
+# suit (mention d'exportation, coordonnées de paiement) est alors décalé
+# d'autant de lignes.
+CATALOG_ROWS_AVAILABLE = [31, 33, 34, 35]
+CATALOG_BLOCK_LAST_ROW = 35
+TOTALS_FIRST_ROW = 38  # SOUS-TOTAL ; TPS/TVQ/TOTAL CAD suivent sur les 3 lignes suivantes
+PAYMENT_INTRO_ROW = 46
+
+# Décalage visuel (indentation Excel native) des puces descriptives d'un
+# produit (VCSOY ou catalogue), pour bien montrer qu'elles font partie de
+# la ligne titre au-dessus plutôt que d'être des produits distincts.
 BULLET_INDENT = 2
 
 # Taille cible du logo dans le classeur Excel (en pixels) et dans le PDF
@@ -148,6 +156,44 @@ def _bill_to_address_lines(invoice):
 
 # ------------------------------------------------------------------ Excel
 
+def _shift_merges_and_insert_rows(ws, insert_at, count):
+    """Insère `count` lignes à la position `insert_at`. openpyxl décale
+    correctement les valeurs/styles des cellules déjà en place, mais PAS
+    les plages de cellules fusionnées situées à/après ce point : on les
+    démérge avant l'insertion puis on les refusionne à leur nouvelle
+    position (+count), sans quoi elles restent visuellement à l'ancien
+    endroit alors que le contenu, lui, a bien été décalé."""
+    if count <= 0:
+        return
+    to_shift = [str(mc) for mc in ws.merged_cells.ranges if mc.min_row >= insert_at]
+    for rng in to_shift:
+        ws.unmerge_cells(rng)
+
+    ws.insert_rows(insert_at, amount=count)
+
+    for rng in to_shift:
+        min_col, min_row, max_col, max_row = range_boundaries(rng)
+        new_rng = f"{get_column_letter(min_col)}{min_row + count}:{get_column_letter(max_col)}{max_row + count}"
+        ws.merge_cells(new_rng)
+
+
+def _copy_row_style(ws, source_row, target_row, min_col=1, max_col=36):
+    """Reproduit la mise en forme (police, bordures, alignement, format de
+    nombre, hauteur) d'une ligne déjà présente dans le modèle sur une
+    ligne nouvellement insérée (colonnes A à AJ = 1 à 36), qui sinon reste
+    sans aucun style (police/taille par défaut, pas de bordure)."""
+    for col in range(min_col, max_col + 1):
+        src = ws.cell(row=source_row, column=col)
+        dst = ws.cell(row=target_row, column=col)
+        dst.font = copy(src.font)
+        dst.border = copy(src.border)
+        dst.fill = copy(src.fill)
+        dst.alignment = copy(src.alignment)
+        dst.number_format = src.number_format
+    if source_row in ws.row_dimensions:
+        ws.row_dimensions[target_row].height = ws.row_dimensions[source_row].height
+
+
 def fill_invoice_xlsx(invoice):
     """Retourne un BytesIO contenant le fichier Excel de la facture."""
     wb = openpyxl.load_workbook(TEMPLATE_PATH)
@@ -174,11 +220,6 @@ def fill_invoice_xlsx(invoice):
     ws["U22"] = labels["quantity"]
     ws["Z22"] = labels["unit_price"]
     ws["AF22"] = labels["total"]
-    ws["Y38"] = labels["subtotal"]
-    ws["Y39"] = labels["gst"]
-    ws["Y40"] = labels["qst"]
-    ws["Y41"] = labels["total_cad"]
-    ws["B46"] = labels["payment_intro"]
 
     ws["AC4"] = invoice.invoice_date
     ws["AC5"] = invoice.invoice_number
@@ -210,49 +251,97 @@ def fill_invoice_xlsx(invoice):
         ws[f"Z{row}"] = unit_price
         ws[f"AF{row}"] = total
 
-    plain_bullet_rows = iter(ROW_VCSOY_PLAIN_BULLETS)
-    standalone_rows = iter(STANDALONE_ROWS)
+    def _clear_row(row):
+        _write_description(row, "", bold=False)
+        _write_amounts(row, None, None, None)
 
-    for item in invoice.line_items:
-        role = item.get("role")
-        # .get(..., 0) plutôt que item[...] : certaines factures créées
-        # avec une version antérieure du code n'ont pas ces clés sur toutes
-        # les lignes (voir historique) — éviter un KeyError qui empêcherait
-        # de télécharger une facture existante.
-        if role == "vcsoy_heading":
-            _write_description(ROW_VCSOY_HEADING, item.get("description", ""), bold=True)
-            _write_amounts(ROW_VCSOY_HEADING, item.get("quantity", 0), item.get("unit_price", 0), item.get("total", 0))
-        elif role == "vcsoy_plain":
+    # Le produit VCSOY (s'il est sélectionné) occupe toujours les lignes
+    # 27-30 ; sinon on efface les lignes d'exemple du modèle d'origine.
+    vcsoy_heading_item = next((i for i in invoice.line_items if i.get("role") == "vcsoy_heading"), None)
+    vcsoy_plain_items = [i for i in invoice.line_items if i.get("role") == "vcsoy_plain"]
+    other_items = [i for i in invoice.line_items if i.get("role") not in ("vcsoy_heading", "vcsoy_plain")]
+
+    if vcsoy_heading_item:
+        _write_description(ROW_VCSOY_HEADING, vcsoy_heading_item.get("description", ""), bold=True)
+        _write_amounts(
+            ROW_VCSOY_HEADING, vcsoy_heading_item.get("quantity", 0),
+            vcsoy_heading_item.get("unit_price", 0), vcsoy_heading_item.get("total", 0),
+        )
+        plain_bullet_rows = iter(ROW_VCSOY_PLAIN_BULLETS)
+        for item in vcsoy_plain_items:
             row = next(plain_bullet_rows, None)
             if row is not None:
                 _write_description(row, item.get("description", ""), bold=False, indent=BULLET_INDENT)
-                # Une des 3 lignes de puces occupait auparavant la ligne
-                # portant le prix dans le modèle (avec une valeur d'exemple
-                # figée) : on l'efface explicitement, ces lignes n'ayant
-                # plus de montant propre.
                 _write_amounts(row, None, None, None)
-        elif role == "standalone":
-            row = next(standalone_rows, None)
-            if row is not None:
-                _write_description(row, item.get("description", ""), bold=False)
-                _write_amounts(row, item.get("quantity", 0), item.get("unit_price", 0), item.get("total", 0))
+        for row in plain_bullet_rows:
+            _clear_row(row)
+    else:
+        for row in [ROW_VCSOY_HEADING] + ROW_VCSOY_PLAIN_BULLETS:
+            _clear_row(row)
 
-    ws["AF38"] = invoice.subtotal
-    ws["AF39"] = invoice.gst_amount
-    ws["AF40"] = invoice.qst_amount
-    ws["AF41"] = invoice.total_amount
+    # Produits du catalogue (titre + jusqu'à 3 puces chacun, nombre de
+    # lignes variable) : utilise les lignes déjà formatées du modèle, et en
+    # insère si besoin (voir _shift_merges_and_insert_rows/_copy_row_style),
+    # ce qui décale d'autant le bloc sous-total et tout ce qui suit.
+    needed = len(other_items)
+    available = len(CATALOG_ROWS_AVAILABLE)
+    extra_needed = max(0, needed - available)
+
+    if extra_needed:
+        insert_at = CATALOG_BLOCK_LAST_ROW + 1
+        _shift_merges_and_insert_rows(ws, insert_at, extra_needed)
+        for offset in range(extra_needed):
+            _copy_row_style(ws, CATALOG_BLOCK_LAST_ROW, insert_at + offset)
+        catalog_rows = CATALOG_ROWS_AVAILABLE + list(range(insert_at, insert_at + extra_needed))
+    else:
+        catalog_rows = list(CATALOG_ROWS_AVAILABLE)
+
+    catalog_rows_iter = iter(catalog_rows)
+    for item in other_items:
+        row = next(catalog_rows_iter, None)
+        if row is None:
+            break
+        role = item.get("role")
+        if role == "catalog_bullet":
+            _write_description(row, item.get("description", ""), bold=False, indent=BULLET_INDENT)
+            _write_amounts(row, None, None, None)
+        else:
+            # "catalog_heading", ou "standalone"/générique (anciennes factures).
+            _write_description(row, item.get("description", ""), bold=False)
+            _write_amounts(row, item.get("quantity", 0), item.get("unit_price", 0), item.get("total", 0))
+    # Lignes du bloc catalogue non utilisées : les blanchir (au cas où le
+    # modèle y contiendrait un jour un exemple, comme pour le bloc VCSOY).
+    for row in catalog_rows_iter:
+        _clear_row(row)
+
+    totals_offset = extra_needed
+    subtotal_row = TOTALS_FIRST_ROW + totals_offset
+    gst_row = subtotal_row + 1
+    qst_row = subtotal_row + 2
+    total_row = subtotal_row + 3
+    payment_intro_row = PAYMENT_INTRO_ROW + totals_offset
+
+    ws[f"Y{subtotal_row}"] = labels["subtotal"]
+    ws[f"Y{gst_row}"] = labels["gst"]
+    ws[f"Y{qst_row}"] = labels["qst"]
+    ws[f"Y{total_row}"] = labels["total_cad"]
+    ws[f"AF{subtotal_row}"] = invoice.subtotal
+    ws[f"AF{gst_row}"] = invoice.gst_amount
+    ws[f"AF{qst_row}"] = invoice.qst_amount
+    ws[f"AF{total_row}"] = invoice.total_amount
+    ws[f"B{payment_intro_row}"] = labels["payment_intro"]
 
     # La mention d'exportation est encadrée d'un cadre en pointillés qui
-    # s'arrête à la colonne T (voir le modèle) : on fusionne B40:T40 et on
-    # active le retour à la ligne automatique pour que le texte ne déborde
-    # jamais au-delà de ce cadre, quelle que soit la langue.
+    # s'arrête à la colonne T (voir le modèle) : on fusionne B:T sur la
+    # ligne TVQ et on active le retour à la ligne automatique pour que le
+    # texte ne déborde jamais au-delà de ce cadre, quelle que soit la langue.
     if invoice.is_export:
-        ws["B40"] = labels["export_note"]
-        ws.merge_cells("B40:T40")
-        note_cell = ws["B40"]
+        ws[f"B{qst_row}"] = labels["export_note"]
+        ws.merge_cells(f"B{qst_row}:T{qst_row}")
+        note_cell = ws[f"B{qst_row}"]
         note_cell.alignment = Alignment(wrap_text=True, vertical="center", horizontal="left")
     else:
-        ws["B40"] = ""
+        ws[f"B{qst_row}"] = ""
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -353,6 +442,22 @@ def render_invoice_pdf(invoice):
             # Puce descriptive du produit VCSOY, sans prix propre : décalée
             # à droite pour bien montrer qu'elle fait partie de l'intitulé
             # ci-dessus plutôt que d'être un produit distinct.
+            table_data.append(["- " + item.get("description", ""), "", "", ""])
+            style_commands.append(("ALIGN", (0, i), (0, i), "LEFT"))
+            style_commands.append(("LEFTPADDING", (0, i), (0, i), 24))
+        elif role == "catalog_heading":
+            # Produit du catalogue : même présentation que le VCSOY (titre
+            # portant quantité/prix/total, éventuellement suivi de puces).
+            table_data.append([
+                item.get("description", ""),
+                f"{item.get('quantity', 0):.2f}",
+                f"{item.get('unit_price', 0):,.2f} $",
+                f"{item.get('total', 0):,.2f} $",
+            ])
+            style_commands.append(("FONTNAME", (0, i), (0, i), "Helvetica-Bold"))
+            style_commands.append(("ALIGN", (0, i), (0, i), "LEFT"))
+        elif role == "catalog_bullet":
+            # Puce descriptive d'un produit du catalogue, sans prix propre.
             table_data.append(["- " + item.get("description", ""), "", "", ""])
             style_commands.append(("ALIGN", (0, i), (0, i), "LEFT"))
             style_commands.append(("LEFTPADDING", (0, i), (0, i), 24))

@@ -4,9 +4,14 @@ Module « Facturation ».
 Permet de générer une facture pour un participant de l'édition en cours :
 langue, numéro de facture, numéro de client, nom du client, date,
 sélection du participant puis des produits à facturer (avec leur montant
-hors taxes). Les taxes du Québec (TPS/TVQ) sont appliquées
-automatiquement, sauf pour un participant facturé hors Canada
+hors taxes et leur quantité). Les taxes du Québec (TPS/TVQ) sont
+appliquées automatiquement, sauf pour un participant facturé hors Canada
 (exportation de services détaxée).
+
+Les produits (hors VCSOY, unique et indissociable) viennent d'un
+catalogue global géré depuis « Liste des produits » (voir le modèle
+Product) : chaque produit a un titre + jusqu'à 3 puces de détail
+optionnelles et un seul prix pour l'ensemble.
 
 La facture est ensuite téléchargeable en Excel (à partir du modèle fourni,
 pour permettre des ajustements manuels) et en PDF. Elle peut aussi être
@@ -19,12 +24,10 @@ from flask import Blueprint, render_template, request, redirect, url_for, send_f
 from flask_login import login_required, current_user
 
 from app.extensions import db
-from app.models import Participant, Invoice, ActionLog
+from app.models import Participant, Invoice, Product, ActionLog
 from app.editions import get_current_edition_id, get_edition
 from app.menu import MENU_ITEMS
-from app.invoicing.products import (
-    VCSOY_PACKAGE_ID, VCSOY_PACKAGE, STANDALONE_PRODUCTS, vcsoy_heading, vcsoy_bullets, product_label,
-)
+from app.invoicing.products import VCSOY_PACKAGE_ID, VCSOY_PACKAGE, vcsoy_heading, vcsoy_bullets
 from app.invoicing.taxes import compute_taxes
 from app.invoicing.generator import fill_invoice_xlsx, render_invoice_pdf
 
@@ -70,14 +73,40 @@ def _participants_json(participants):
     }
 
 
+def _all_products():
+    return Product.query.order_by(Product.title).all()
+
+
+def _products_json(products):
+    return {
+        str(p.id): {
+            "title": p.title,
+            "bullet1": p.bullet1 or "",
+            "bullet2": p.bullet2 or "",
+            "bullet3": p.bullet3 or "",
+            "price": p.price or 0,
+        }
+        for p in products
+    }
+
+
 def _invoice_edit_payload(invoice):
     products_data = []
     vcsoy_price = None
     for item in (invoice.line_items or []):
         if item.get("role") == "vcsoy_heading":
             vcsoy_price = item.get("unit_price")
+        elif item.get("role") == "catalog_heading" and item.get("product_id"):
+            products_data.append({
+                "product_id": item["product_id"], "unit_price": item.get("unit_price"),
+                "quantity": item.get("quantity", 1),
+            })
         elif item.get("role") == "standalone" and item.get("product_id"):
-            products_data.append({"product_id": item["product_id"], "unit_price": item.get("unit_price")})
+            # Facture créée avant le catalogue de produits : le product_id
+            # (ex. "goodies") ne correspond plus à une case à cocher du
+            # nouveau catalogue, ignoré ici (la facture reste néanmoins
+            # consultable/téléchargeable telle quelle).
+            pass
     if vcsoy_price is not None:
         products_data.insert(0, {"product_id": VCSOY_PACKAGE_ID, "unit_price": vcsoy_price})
     return {
@@ -174,38 +203,48 @@ def _validate_and_build(form, edition_id, edition, require_participant):
     data["participant"] = participant
 
     selected_vcsoy = bool(form.get(f"product_{VCSOY_PACKAGE_ID}"))
-    selected_standalone = [p for p in STANDALONE_PRODUCTS if form.get(f"product_{p['id']}")]
+    all_products = _all_products()
+    selected_products = [p for p in all_products if form.get(f"product_cat_{p.id}")]
 
-    if not selected_vcsoy and not selected_standalone:
+    if not selected_vcsoy and not selected_products:
         errors.append("Merci de sélectionner au moins un produit à facturer.")
 
-    prices = {}
+    vcsoy_price = None
     if selected_vcsoy:
         raw_price = form.get(f"price_{VCSOY_PACKAGE_ID}", "").strip().replace(",", ".")
         try:
-            amount = float(raw_price)
-            if amount <= 0:
+            vcsoy_price = float(raw_price)
+            if vcsoy_price <= 0:
                 raise ValueError()
-            prices[VCSOY_PACKAGE_ID] = amount
         except ValueError:
             errors.append("Montant hors taxes invalide pour « Voted Customer Service Of the Year (VCSOY) ».")
 
-    for product in selected_standalone:
-        raw_price = form.get(f"price_{product['id']}", "").strip().replace(",", ".")
+    catalog_values = {}  # product.id -> (price, quantity)
+    for product in selected_products:
+        raw_price = form.get(f"price_cat_{product.id}", "").strip().replace(",", ".")
+        raw_qty = form.get(f"qty_cat_{product.id}", "").strip()
         try:
-            amount = float(raw_price)
-            if amount <= 0:
+            price = float(raw_price)
+            if price < 0:
                 raise ValueError()
-            prices[product["id"]] = amount
         except ValueError:
-            errors.append(f"Montant hors taxes invalide pour « {product_label(product['id'], data['language'])} ».")
+            errors.append(f"Montant hors taxes invalide pour « {product.title} ».")
+            price = None
+        try:
+            qty = float(raw_qty) if raw_qty else 1.0
+            if qty <= 0:
+                raise ValueError()
+        except ValueError:
+            errors.append(f"Quantité invalide pour « {product.title} ».")
+            qty = None
+        if price is not None and qty is not None:
+            catalog_values[product.id] = (price, qty)
 
     if errors:
         return errors, data
 
     line_items = []
     if selected_vcsoy:
-        amount = prices[VCSOY_PACKAGE_ID]
         bullets = vcsoy_bullets(data["language"])
         # Un seul produit, indissociable, présenté sur 4 lignes : l'intitulé
         # porte le prix et la quantité de l'ensemble, suivi des 3 puces
@@ -213,20 +252,24 @@ def _validate_and_build(form, edition_id, edition, require_participant):
         line_items.append({
             "role": "vcsoy_heading",
             "description": vcsoy_heading(data["language"], edition_id),
-            "is_heading": True, "quantity": 1, "unit_price": amount, "total": amount,
+            "is_heading": True, "quantity": 1, "unit_price": vcsoy_price, "total": vcsoy_price,
         })
         line_items.append({"role": "vcsoy_plain", "description": bullets[0], "is_heading": False})
         line_items.append({"role": "vcsoy_plain", "description": bullets[1], "is_heading": False})
         line_items.append({"role": "vcsoy_plain", "description": bullets[2], "is_heading": False})
 
-    for product in selected_standalone:
-        amount = prices[product["id"]]
+    for product in selected_products:
+        price, qty = catalog_values[product.id]
+        total = round(price * qty, 2)
+        # Comme le VCSOY : un titre (portant prix/quantité/total) suivi de
+        # ses puces de détail éventuelles (jusqu'à 3), sans montant propre.
         line_items.append({
-            "role": "standalone",
-            "product_id": product["id"],
-            "description": product_label(product["id"], data["language"]),
-            "is_heading": False, "quantity": 1, "unit_price": amount, "total": amount,
+            "role": "catalog_heading", "product_id": product.id,
+            "description": product.title, "is_heading": True,
+            "quantity": qty, "unit_price": price, "total": total,
         })
+        for bullet in product.bullets():
+            line_items.append({"role": "catalog_bullet", "description": bullet, "is_heading": False})
 
     subtotal = sum(i.get("total", 0) for i in line_items)
     tax = compute_taxes(subtotal, data["bill_to_country"])
@@ -247,10 +290,12 @@ def list_invoices():
     edition_id = get_current_edition_id()
     invoices = Invoice.query.filter_by(edition_id=edition_id).order_by(Invoice.id.desc()).all()
     edit_payloads = {inv.id: _invoice_edit_payload(inv) for inv in invoices}
+    products = _all_products()
     return render_template(
         "invoicing/list.html", edition=get_edition(edition_id), invoices=invoices,
         edit_payloads=edit_payloads,
-        vcsoy_package=VCSOY_PACKAGE, vcsoy_package_id=VCSOY_PACKAGE_ID, standalone_products=STANDALONE_PRODUCTS,
+        vcsoy_package=VCSOY_PACKAGE, vcsoy_package_id=VCSOY_PACKAGE_ID,
+        products=products, products_json=_products_json(products),
         active_item=ACTIVE_ITEM, menu_items=MENU_ITEMS, error=None,
     )
 
@@ -259,13 +304,96 @@ def _render_list_with_error(error):
     edition_id = get_current_edition_id()
     invoices = Invoice.query.filter_by(edition_id=edition_id).order_by(Invoice.id.desc()).all()
     edit_payloads = {inv.id: _invoice_edit_payload(inv) for inv in invoices}
+    products = _all_products()
     return render_template(
         "invoicing/list.html", edition=get_edition(edition_id), invoices=invoices,
         edit_payloads=edit_payloads,
-        vcsoy_package=VCSOY_PACKAGE, vcsoy_package_id=VCSOY_PACKAGE_ID, standalone_products=STANDALONE_PRODUCTS,
+        vcsoy_package=VCSOY_PACKAGE, vcsoy_package_id=VCSOY_PACKAGE_ID,
+        products=products, products_json=_products_json(products),
         active_item=ACTIVE_ITEM, menu_items=MENU_ITEMS, error=error,
     )
 
+
+# ------------------------------------------------------- Catalogue produits
+
+@invoicing_bp.route("/products/add", methods=["POST"])
+@login_required
+def add_product():
+    title = request.form.get("title", "").strip()
+    if not title:
+        return _render_list_with_error("Le titre du produit est obligatoire.")
+
+    bullets = [request.form.get(f"bullet{i}", "").strip() for i in (1, 2, 3)]
+    raw_price = request.form.get("price", "").strip().replace(",", ".")
+    try:
+        price = float(raw_price) if raw_price else 0.0
+        if price < 0:
+            raise ValueError()
+    except ValueError:
+        return _render_list_with_error("Prix de produit invalide.")
+
+    db.session.add(Product(
+        title=title, bullet1=bullets[0] or None, bullet2=bullets[1] or None, bullet3=bullets[2] or None,
+        price=price, created_by_id=current_user.id,
+    ))
+    db.session.commit()
+
+    _log("Ajout d'un produit au catalogue", details=title)
+    return redirect(url_for("invoicing.list_invoices"))
+
+
+@invoicing_bp.route("/products/<int:product_id>/update", methods=["POST"])
+@login_required
+def update_product(product_id):
+    product = Product.query.get(product_id)
+    if not product:
+        return _render_list_with_error("Produit introuvable.")
+
+    title = request.form.get("title", "").strip()
+    if not title:
+        return _render_list_with_error("Le titre du produit est obligatoire.")
+
+    bullets = [request.form.get(f"bullet{i}", "").strip() for i in (1, 2, 3)]
+    raw_price = request.form.get("price", "").strip().replace(",", ".")
+    try:
+        price = float(raw_price) if raw_price else 0.0
+        if price < 0:
+            raise ValueError()
+    except ValueError:
+        return _render_list_with_error("Prix de produit invalide.")
+
+    product.title = title
+    product.bullet1 = bullets[0] or None
+    product.bullet2 = bullets[1] or None
+    product.bullet3 = bullets[2] or None
+    product.price = price
+    db.session.commit()
+
+    _log("Modification d'un produit du catalogue", details=title)
+    return redirect(url_for("invoicing.list_invoices"))
+
+
+@invoicing_bp.route("/products/delete", methods=["POST"])
+@login_required
+def delete_products():
+    selected_ids = [int(i) for i in request.form.getlist("product_ids") if i.isdigit()]
+    if not selected_ids:
+        return _render_list_with_error("Veuillez cocher au moins un produit à supprimer.")
+
+    to_delete = Product.query.filter(Product.id.in_(selected_ids)).all()
+    titles = [p.title for p in to_delete]
+    # Les factures déjà générées gardent leur propre copie (description,
+    # prix) dans line_items : supprimer le produit du catalogue ne les
+    # modifie pas.
+    for product in to_delete:
+        db.session.delete(product)
+    db.session.commit()
+
+    _log("Suppression de produit(s) du catalogue", details=", ".join(titles))
+    return redirect(url_for("invoicing.list_invoices"))
+
+
+# ------------------------------------------------------------------ Factures
 
 @invoicing_bp.route("/create", methods=["GET"])
 @login_required
@@ -275,7 +403,7 @@ def create_form():
     return render_template(
         "invoicing/create.html", edition=get_edition(edition_id), participants=participants,
         participants_json=_participants_json(participants),
-        vcsoy_package=VCSOY_PACKAGE, vcsoy_package_id=VCSOY_PACKAGE_ID, standalone_products=STANDALONE_PRODUCTS,
+        vcsoy_package=VCSOY_PACKAGE, vcsoy_package_id=VCSOY_PACKAGE_ID, products=_all_products(),
         errors=[], form_values={}, active_item=ACTIVE_ITEM, menu_items=MENU_ITEMS,
     )
 
@@ -294,7 +422,7 @@ def create_invoice():
         return render_template(
             "invoicing/create.html", edition=edition, participants=participants,
             participants_json=_participants_json(participants),
-            vcsoy_package=VCSOY_PACKAGE, vcsoy_package_id=VCSOY_PACKAGE_ID, standalone_products=STANDALONE_PRODUCTS,
+            vcsoy_package=VCSOY_PACKAGE, vcsoy_package_id=VCSOY_PACKAGE_ID, products=_all_products(),
             errors=errors, form_values=form, active_item=ACTIVE_ITEM, menu_items=MENU_ITEMS,
         )
 

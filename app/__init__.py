@@ -78,5 +78,26 @@ def create_app(config_class=Config):
 
     with app.app_context():
         db.create_all()
+        _seed_default_products()
 
     return app
+
+
+def _seed_default_products():
+    """
+    Reprend dans le catalogue (modèle Product) les 2 produits qui existaient
+    en dur avant l'introduction du catalogue : le droit d'utilisation de la
+    marque VCSOY, et « Goodies » renommé « Pack Goodies initial » à 0 $ (voir
+    demande explicite de l'utilisateur). Ne s'exécute qu'une fois : si un
+    produit du même titre existe déjà, on ne le recrée pas.
+    """
+    from app.models import Product
+
+    defaults = [
+        ("Droit d'utilisation de la marque VCSOY à titre de gagnant pendant un an", 0.0),
+        ("Pack Goodies initial", 0.0),
+    ]
+    for title, price in defaults:
+        if not Product.query.filter_by(title=title).first():
+            db.session.add(Product(title=title, price=price))
+    db.session.commit()

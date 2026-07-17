@@ -790,7 +790,29 @@ a { text-decoration: none; color: inherit; }
   color: var(--muted);
 }
 
+.product-qty-input {
+  width: 70px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 13px;
+  text-align: center;
+}
+.product-qty-input:disabled {
+  background: #F0F0F0;
+  color: var(--muted);
+}
+
 .product-row-vcsoy { border-bottom: none; padding-bottom: 4px; }
+
+.app-dialog-catalog {
+  max-width: 720px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.col-catalog-title { flex: 1 1 auto; }
+.col-catalog-price { flex: 0 0 100px; text-align: right; }
 
 .product-bullets {
   margin: 0 0 10px;

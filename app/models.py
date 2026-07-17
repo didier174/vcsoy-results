@@ -194,6 +194,32 @@ class Invoice(db.Model):
     created_by = db.relationship("User")
 
 
+class Product(db.Model):
+    """
+    Catalogue de produits facturables, global (partagé entre toutes les
+    éditions — un produit créé une fois reste disponible chaque année).
+    Distinct du produit VCSOY (unique et indissociable, voir
+    app/invoicing/products.py), mais présenté de la même façon sur une
+    facture : un titre + jusqu'à 3 puces de détail optionnelles, avec un
+    seul prix pour l'ensemble.
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    bullet1 = db.Column(db.String(255))
+    bullet2 = db.Column(db.String(255))
+    bullet3 = db.Column(db.String(255))
+    price = db.Column(db.Float, default=0)
+
+    created_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    created_by = db.relationship("User")
+
+    def bullets(self):
+        return [b for b in (self.bullet1, self.bullet2, self.bullet3) if b]
+
+
 class TestResult(db.Model):
     """
     Une ligne de test (un test mystère), importée depuis un onglet du fichier
