@@ -880,6 +880,28 @@ a { text-decoration: none; color: inherit; }
   text-align: left;
 }
 
+.invoice-order-controls {
+  white-space: nowrap;
+  width: 1%;
+}
+
+.btn-order-move {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin: 0 2px;
+  cursor: pointer;
+  font-size: 10px;
+  color: var(--text);
+}
+.btn-order-move:hover:not(:disabled) { background: var(--item-hover); }
+.btn-order-move:disabled {
+  color: var(--muted);
+  cursor: default;
+  opacity: 0.4;
+}
+
 .link-button {
   background: none;
   border: none;

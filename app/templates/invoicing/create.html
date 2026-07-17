@@ -105,7 +105,7 @@
               </label>
               <input type="text" name="price_cat_{{ p.id }}" placeholder="Montant avant taxes ($)"
                      value="{{ form_values.get('price_cat_' ~ p.id) or ('%.2f'|format(p.price or 0)) }}" class="product-price-input">
-              <input type="text" name="qty_cat_{{ p.id }}" placeholder="Qté"
+              <input type="text" name="qty_cat_{{ p.id }}" placeholder="Qté" maxlength="3" inputmode="numeric" pattern="[0-9]{1,3}"
                      value="{{ form_values.get('qty_cat_' ~ p.id) or '1' }}" class="product-qty-input">
             </div>
             {% if p.bullets() %}
@@ -129,6 +129,7 @@
   <h3>Confirmer la facture</h3>
   <p class="muted">Vérifiez le récapitulatif ci-dessous avant de lancer la génération de la facture.</p>
   <div id="invoice-summary-content"></div>
+  <input type="hidden" name="product_order" id="product_order" form="invoice-create-form">
   <div class="dialog-actions">
     <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Annuler</button>
     <button type="button" class="btn btn-primary" id="confirm-invoice-submit">Confirmer et générer</button>

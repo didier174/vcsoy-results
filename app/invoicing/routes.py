@@ -265,17 +265,29 @@ def _validate_and_build(form, edition_id, edition, require_participant):
             errors.append(f"Montant hors taxes invalide pour « {product.title} ».")
             price = None
         try:
-            qty = float(raw_qty) if raw_qty else 1.0
-            if qty <= 0:
+            qty = int(raw_qty) if raw_qty else 1
+            if qty <= 0 or qty > 999:
                 raise ValueError()
         except ValueError:
-            errors.append(f"Quantité invalide pour « {product.title} ».")
+            errors.append(f"Quantité invalide pour « {product.title} » (nombre entier de 1 à 999).")
             qty = None
         if price is not None and qty is not None:
             catalog_values[product.id] = (price, qty)
 
     if errors:
         return errors, data
+
+    # Ordre d'affichage des produits du catalogue sur la facture, choisi par
+    # l'utilisateur dans le popup de confirmation (par défaut alphabétique,
+    # l'ordre du catalogue) : product_order est une liste d'identifiants de
+    # produit séparés par des virgules. Les produits absents de cette liste
+    # (ex. si elle est vide) restent dans leur ordre alphabétique d'origine.
+    order_raw = form.get("product_order", "").strip()
+    if order_raw:
+        order_index = {
+            int(pid): i for i, pid in enumerate(order_raw.split(",")) if pid.strip().isdigit()
+        }
+        selected_products.sort(key=lambda p: order_index.get(p.id, len(order_index)))
 
     line_items = []
     if selected_vcsoy:

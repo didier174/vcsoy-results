@@ -194,6 +194,20 @@ def _copy_row_style(ws, source_row, target_row, min_col=1, max_col=36):
         ws.row_dimensions[target_row].height = ws.row_dimensions[source_row].height
 
 
+def _merge_item_row(ws, row):
+    """Reproduit sur une ligne nouvellement insérée le même motif de
+    fusion de cellules que les autres lignes d'article du modèle (colonnes
+    description / quantité / prix unitaire / total) : `insert_rows` ne crée
+    aucune fusion pour les lignes qu'il ajoute, contrairement à celles
+    qu'il décale (voir _shift_merges_and_insert_rows). Sans cela, la
+    quantité/le total d'une ligne insérée se retrouve dans une seule
+    cellule bien trop étroite pour l'afficher, d'où des "###" à l'ouverture."""
+    ws.merge_cells(f"A{row}:T{row}")
+    ws.merge_cells(f"U{row}:Y{row}")
+    ws.merge_cells(f"Z{row}:AE{row}")
+    ws.merge_cells(f"AF{row}:AJ{row}")
+
+
 def fill_invoice_xlsx(invoice):
     """Retourne un BytesIO contenant le fichier Excel de la facture."""
     wb = openpyxl.load_workbook(TEMPLATE_PATH)
@@ -247,7 +261,13 @@ def fill_invoice_xlsx(invoice):
         )
 
     def _write_amounts(row, quantity, unit_price, total):
-        ws[f"U{row}"] = quantity
+        qty_cell = ws[f"U{row}"]
+        qty_cell.value = quantity
+        # Toujours un nombre entier (pas de décimales) : une quantité est
+        # plafonnée à 3 chiffres (voir validation du formulaire) et un
+        # format avec décimales/séparateur de milliers prend trop de place
+        # dans la cellule, ce qui affiche "###" à l'ouverture du fichier.
+        qty_cell.number_format = "0"
         ws[f"Z{row}"] = unit_price
         ws[f"AF{row}"] = total
 
@@ -292,6 +312,7 @@ def fill_invoice_xlsx(invoice):
         _shift_merges_and_insert_rows(ws, insert_at, extra_needed)
         for offset in range(extra_needed):
             _copy_row_style(ws, CATALOG_BLOCK_LAST_ROW, insert_at + offset)
+            _merge_item_row(ws, insert_at + offset)
         catalog_rows = CATALOG_ROWS_AVAILABLE + list(range(insert_at, insert_at + extra_needed))
     else:
         catalog_rows = list(CATALOG_ROWS_AVAILABLE)
@@ -432,7 +453,7 @@ def render_invoice_pdf(invoice):
             # Intitulé du produit VCSOY, portant sa quantité/prix/total.
             table_data.append([
                 item.get("description", ""),
-                f"{item.get('quantity', 0):.2f}",
+                f"{item.get('quantity', 0):.0f}",
                 f"{item.get('unit_price', 0):,.2f} $",
                 f"{item.get('total', 0):,.2f} $",
             ])
@@ -450,7 +471,7 @@ def render_invoice_pdf(invoice):
             # portant quantité/prix/total, éventuellement suivi de puces).
             table_data.append([
                 item.get("description", ""),
-                f"{item.get('quantity', 0):.2f}",
+                f"{item.get('quantity', 0):.0f}",
                 f"{item.get('unit_price', 0):,.2f} $",
                 f"{item.get('total', 0):,.2f} $",
             ])
@@ -467,7 +488,7 @@ def render_invoice_pdf(invoice):
             # tiret puisqu'il n'y a pas de puces de détail en dessous.
             table_data.append([
                 item.get("description", ""),
-                f"{item.get('quantity', 0):.2f}",
+                f"{item.get('quantity', 0):.0f}",
                 f"{item.get('unit_price', 0):,.2f} $",
                 f"{item.get('total', 0):,.2f} $",
             ])
