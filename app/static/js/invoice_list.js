@@ -17,12 +17,15 @@ function _resetEditProducts() {
     var row = checkbox.closest(".product-row");
     var priceInput = row ? row.querySelector(".product-price-input") : null;
     var qtyInput = row ? row.querySelector(".product-qty-input") : null;
+    // Un produit non sélectionné retrouve son prix catalogue par défaut
+    // (et quantité 1), comme sur la page de création — pas une valeur
+    // vide — au cas où l'utilisateur le coche ensuite.
     if (priceInput) {
-      priceInput.value = "";
+      priceInput.value = priceInput.dataset.defaultPrice || "";
       priceInput.disabled = true;
     }
     if (qtyInput) {
-      qtyInput.value = "";
+      qtyInput.value = qtyInput.dataset.defaultQty || "1";
       qtyInput.disabled = true;
     }
   });
@@ -57,6 +60,10 @@ function openEditInvoiceDialog(invoiceId) {
 
   var form = document.getElementById("edit-invoice-form");
   form.action = "/invoicing/" + invoiceId + "/update";
+  // Repart à chaque ouverture sans confirmation : sinon, une fois la
+  // première modification confirmée, les suivantes sauteraient le popup
+  // de confirmation (le formulaire reste dans le DOM entre deux éditions).
+  form.dataset.confirmed = "";
 
   var editLanguageSelect = document.getElementById("edit_language");
   editLanguageSelect.value = data.language;
@@ -90,7 +97,106 @@ function openEditInvoiceDialog(invoiceId) {
     }
   });
 
+  // Ordre déjà enregistré sur cette facture (celui du catalogue, hors
+  // VCSOY) : point de départ du réordonnancement, plutôt que de repartir
+  // de l'ordre alphabétique comme pour une facture neuve.
+  _editCatalogOrder = (data.products || [])
+    .filter(function (item) { return String(item.product_id) !== "vcsoy_package"; })
+    .map(function (item) { return String(item.product_id); });
+
   document.getElementById("edit-invoice-popup").showModal();
+}
+
+/*
+ * Récapitulatif de confirmation avant enregistrement d'une facture modifiée
+ * (même principe que sur la page de création, voir invoice_form.js) : le
+ * VCSOY reste toujours en tête, les produits du catalogue partent de
+ * l'ordre déjà enregistré sur la facture (_editCatalogOrder, initialisé
+ * dans openEditInvoiceDialog) et peuvent être réordonnés via des flèches.
+ */
+var _editCatalogOrder = [];
+
+function _collectCheckedEditProducts() {
+  var vcsoy = null;
+  var catalog = [];
+  document.querySelectorAll("#edit-invoice-form .edit-product-checkbox:checked").forEach(function (checkbox) {
+    var row = checkbox.closest(".product-row");
+    if (!row) return;
+    var labelEl = row.querySelector(".product-checkbox-label");
+    var priceInput = row.querySelector(".product-price-input");
+    var qtyInput = row.querySelector(".product-qty-input");
+    var price = parseFloat(((priceInput && priceInput.value) || "0").replace(",", ".")) || 0;
+    var qty = qtyInput ? (parseInt(qtyInput.value, 10) || 1) : 1;
+    var item = {
+      id: checkbox.dataset.productId,
+      label: labelEl ? labelEl.textContent.trim() : "",
+      qty: qty, price: price, total: price * qty,
+    };
+    if (checkbox.dataset.productId === "vcsoy_package") {
+      vcsoy = item;
+    } else {
+      catalog.push(item);
+    }
+  });
+  return { vcsoy: vcsoy, catalog: catalog };
+}
+
+function _moveEditConfirmProduct(id, direction) {
+  var idx = _editCatalogOrder.indexOf(id);
+  if (idx === -1) return;
+  var newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= _editCatalogOrder.length) return;
+  var tmp = _editCatalogOrder[idx];
+  _editCatalogOrder[idx] = _editCatalogOrder[newIdx];
+  _editCatalogOrder[newIdx] = tmp;
+  _renderEditConfirmSummary();
+}
+
+function _renderEditConfirmSummary() {
+  var collected = _collectCheckedEditProducts();
+  var byId = {};
+  collected.catalog.forEach(function (item) { byId[item.id] = item; });
+
+  var orderedIds = _editCatalogOrder.filter(function (id) { return byId[id]; });
+  collected.catalog.forEach(function (item) {
+    if (orderedIds.indexOf(item.id) === -1) orderedIds.push(item.id);
+  });
+  _editCatalogOrder = orderedIds;
+
+  var subtotal = 0;
+  var html = '<div class="compilation-table-wrap"><table class="compilation-table"><thead><tr>'
+    + "<th></th><th>Produit</th><th>Qté</th><th>Prix unitaire</th><th>Total</th>"
+    + "</tr></thead><tbody>";
+
+  if (collected.vcsoy) {
+    subtotal += collected.vcsoy.total;
+    html += "<tr><td></td><td>" + collected.vcsoy.label + "</td><td>" + collected.vcsoy.qty + "</td><td>"
+      + collected.vcsoy.price.toFixed(2) + " $</td><td>" + collected.vcsoy.total.toFixed(2) + " $</td></tr>";
+  }
+
+  _editCatalogOrder.forEach(function (id, index) {
+    var item = byId[id];
+    subtotal += item.total;
+    var upAttrs = index === 0 ? "disabled" : "";
+    var downAttrs = index === _editCatalogOrder.length - 1 ? "disabled" : "";
+    html += "<tr><td class=\"invoice-order-controls\">"
+      + "<button type=\"button\" class=\"btn-order-move\" " + upAttrs + " onclick=\"_moveEditConfirmProduct('" + id + "', -1)\">&#9650;</button>"
+      + "<button type=\"button\" class=\"btn-order-move\" " + downAttrs + " onclick=\"_moveEditConfirmProduct('" + id + "', 1)\">&#9660;</button>"
+      + "</td><td>" + item.label + "</td><td>" + item.qty + "</td><td>"
+      + item.price.toFixed(2) + " $</td><td>" + item.total.toFixed(2) + " $</td></tr>";
+  });
+
+  html += "</tbody></table></div>";
+  if (collected.vcsoy) {
+    html += '<p class="muted" style="margin-top: 6px;">Le produit VCSOY figure toujours en tête de la facture.</p>';
+  }
+  if (_editCatalogOrder.length > 1) {
+    html += '<p class="muted" style="margin-top: 6px;">Utilisez les flèches pour changer l\'ordre des autres produits sur la facture.</p>';
+  }
+  html += '<p class="muted" style="margin-top: 10px;">Sous-total avant taxes : <strong>'
+    + subtotal.toFixed(2) + " $</strong> (les taxes exactes sont calculées à l'enregistrement).</p>";
+
+  document.getElementById("edit-invoice-summary-content").innerHTML = html;
 }
 
 function triggerEditInvoice() {
@@ -174,6 +280,30 @@ document.addEventListener("DOMContentLoaded", function () {
   if (editLanguageSelect) {
     editLanguageSelect.addEventListener("change", function () {
       _applyProductLanguageFilter(editLanguageSelect, "#edit-invoice-popup .product-entry", ".edit-product-checkbox");
+    });
+  }
+
+  var editForm = document.getElementById("edit-invoice-form");
+  var editConfirmPopup = document.getElementById("edit-confirm-invoice-popup");
+  var editConfirmSubmit = document.getElementById("edit-confirm-invoice-submit");
+  if (editForm && editConfirmPopup && editConfirmSubmit) {
+    editForm.addEventListener("submit", function (e) {
+      if (editForm.dataset.confirmed === "1") return;
+      e.preventDefault();
+      _renderEditConfirmSummary();
+      editConfirmPopup.showModal();
+    });
+
+    editConfirmSubmit.addEventListener("click", function () {
+      var orderInput = document.getElementById("edit_product_order");
+      if (orderInput) orderInput.value = _editCatalogOrder.join(",");
+      editConfirmPopup.close();
+      editForm.dataset.confirmed = "1";
+      if (editForm.requestSubmit) {
+        editForm.requestSubmit();
+      } else {
+        editForm.submit();
+      }
     });
   }
 });
