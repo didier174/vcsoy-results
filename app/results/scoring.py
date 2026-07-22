@@ -191,13 +191,23 @@ def compute_consolidated_score(channel_notes):
     return round(raw * multiplier, 2)
 
 
-def build_category_winners(rows):
+
+# Seuil minimum de la note finale consolidée pour pouvoir être élu (règle
+# affichée en page de garde du rapport d'étude : "il faut se classer 1er de
+# sa catégorie ET obtenir une note supérieure ou égale à 11,5/20"). Un 1er de
+# catégorie qui n'atteint pas ce seuil n'est donc pas lauréat (confirmé).
+MIN_WINNER_SCORE = 11.5
+
+
+def build_category_winners(rows, min_score=MIN_WINNER_SCORE):
     """
     rows : sortie de build_compilation_rows (une ligne par participant).
 
-    Retourne une liste {category_code, category_label, winner_name,
-    winner_score}, une entrée par catégorie ayant au moins un participant
-    dont la note finale consolidée est calculable, triée par catégorie.
+    Retourne une liste {category_code, category_label, winner_participant_id,
+    winner_name, winner_score}, une entrée par catégorie ayant un 1er dont la
+    note finale consolidée est calculable ET >= min_score (sinon, aucune
+    entrée pour cette catégorie : pas de lauréat cette année-là), triée par
+    catégorie.
     """
     by_category = {}
     for row in rows:
@@ -205,18 +215,145 @@ def build_category_winners(rows):
         if score is None:
             continue
         key = (row["category_code"], row["category_label"])
-        by_category.setdefault(key, []).append((score, row["participant_name"]))
+        by_category.setdefault(key, []).append((score, row["participant_name"], row["participant_id"]))
 
     winners = []
     for (category_code, category_label), scores in by_category.items():
         scores.sort(key=lambda s: s[0], reverse=True)
-        best_score, best_name = scores[0]
+        best_score, best_name, best_id = scores[0]
+        if best_score < min_score:
+            continue
         winners.append({
             "category_code": category_code,
             "category_label": category_label,
+            "winner_participant_id": best_id,
             "winner_name": best_name,
             "winner_score": best_score,
         })
 
     winners.sort(key=lambda w: w["category_label"].lower())
     return winners
+
+
+# --------------------------------------------------- Détail par critère (Rapport d'étude)
+#
+# Codes "Code N" présents par canal, dans l'ordre du récapitulatif des
+# critères (voir modèle de rapport, diapositives "Récapitulatif des
+# critères"). Sert à parcourir systématiquement tous les critères d'un canal
+# lors du calcul des balises {{C<n> <canal> ...}}.
+CRITERIA_BY_CHANNEL = {
+    "phone": [8, 10, 9, 12, 11, 2, 1, 3, 4, 5, 6, 7, 13, 14, 15],
+    "mail": [9, 10, 1, 2, 3, 5, 4, 7, 8, 6, 11, 12, 13, 14],
+    "web": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+    "rs": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    "chat": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+}
+
+
+def compute_criterion_stats(channel, code, raw_data_list):
+    """
+    raw_data_list : liste de TestResult.raw_data pour ce canal (déjà filtrée
+    au périmètre voulu : vous / votre catégorie / tous les participants).
+
+    Retourne {"nb", "note", "pct"} : nb = nombre de tests où ce critère est
+    valide (ni vide, ni "Non applicable"/"Non observable") ; note = moyenne
+    pondérée du code (0/1/2, doublé pour le critère "Qualité de la réponse"
+    du canal) ; pct = pourcentage de tests où le code brut vaut exactement 2
+    (« score Bon ») parmi les tests valides — confirmé : ce n'est PAS
+    note/2*100, c'est un comptage indépendant.
+    Si aucun test valide, note et pct valent None (nb = 0).
+    """
+    weight = 2 if code == DOUBLED_CODE_BY_CHANNEL.get(channel) else 1
+    total = 0.0
+    nb_bon = 0
+    nb_valid = 0
+
+    for raw_data in raw_data_list:
+        entry = next((c for c in extract_codes(raw_data or {}) if c["number"] == code), None)
+        if entry is None:
+            continue
+        value = entry["value"]
+        if value is None or str(value).strip() == "":
+            continue
+        sval = str(value).strip().lower()
+        if sval in EXCLUDED_VALUES:
+            continue
+        try:
+            numeric = int(float(sval))
+        except ValueError:
+            continue
+        nb_valid += 1
+        total += numeric * weight
+        if numeric == 2:
+            nb_bon += 1
+
+    if nb_valid == 0:
+        return {"nb": 0, "note": None, "pct": None}
+    return {
+        "nb": nb_valid,
+        "note": round(total / nb_valid, 2),
+        "pct": round(nb_bon / nb_valid * 100),
+    }
+
+
+def compute_importance(channel, code, tests_with_note):
+    """
+    tests_with_note : liste de (raw_data, note_20) — un élément par test
+    valide de ce canal, sur l'ensemble de l'édition (note_20 = la note
+    globale sur 20 de CE test, déjà calculée via compute_test_score).
+
+    Retourne le coefficient de corrélation de Pearson entre la valeur
+    pondérée du critère et la note globale du test (méthode confirmée pour
+    le mapping d'importance), ou None si pas assez de données ou si l'une
+    des deux séries est constante (corrélation non définie).
+    """
+    weight = 2 if code == DOUBLED_CODE_BY_CHANNEL.get(channel) else 1
+    xs, ys = [], []
+
+    for raw_data, note_20 in tests_with_note:
+        entry = next((c for c in extract_codes(raw_data or {}) if c["number"] == code), None)
+        if entry is None:
+            continue
+        value = entry["value"]
+        if value is None or str(value).strip() == "":
+            continue
+        sval = str(value).strip().lower()
+        if sval in EXCLUDED_VALUES:
+            continue
+        try:
+            numeric = int(float(sval))
+        except ValueError:
+            continue
+        xs.append(numeric * weight)
+        ys.append(note_20)
+
+    n = len(xs)
+    if n < 2:
+        return None
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    cov = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
+    var_x = sum((x - mean_x) ** 2 for x in xs)
+    var_y = sum((y - mean_y) ** 2 for y in ys)
+    if var_x == 0 or var_y == 0:
+        return None
+    return cov / (var_x ** 0.5 * var_y ** 0.5)
+
+
+def is_test_completed(channel, raw_data):
+    """
+    Un test est-il "complété" sans incident d'accessibilité (pas de coupure,
+    de non-réponse...) ? Utilisé pour les balises "Total QS <canal> ..."
+    (recalcul du canal en excluant les tests marqués en échec) et pour la
+    balise "QS phone pct ..." (taux de tests complétés).
+
+    Seuls Phone et Mail ont une colonne QS explicite dans les fichiers de
+    résultats ("Completed" vs vide/"Failed"/"dropped", confirmé). Pour les
+    autres canaux (Web, RS, Chat), aucune colonne équivalente identifiée à
+    ce jour : tous les tests valides sont considérés "complétés" par défaut
+    (donc « Total QS » = « Total » pour ces 3 canaux) — hypothèse à vérifier
+    en conditions réelles.
+    """
+    if channel in ("phone", "mail"):
+        return str((raw_data or {}).get("QS", "")).strip().lower() == "completed"
+    return True

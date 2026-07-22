@@ -4,6 +4,14 @@
   <h1 class="page-title">Rapport d'étude</h1>
   <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
 
+  <p class="muted">
+    Important : les rapports d'étude comparent chaque participant à
+    l'ensemble des résultats de l'édition (catégorie, tous les participants,
+    lauréats). Charge <strong>tous</strong> les fichiers de résultats de
+    l'édition dans « Chargement fichier résultat » avant de générer un
+    rapport, sans quoi les comparaisons seront incomplètes ou fausses.
+  </p>
+
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       <div class="flash-list">

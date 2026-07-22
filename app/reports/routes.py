@@ -18,11 +18,12 @@ from flask_login import login_required, current_user
 
 from app.access_control import admin_required
 from app.extensions import db
-from app.models import StudyReport, ReportTemplate, Participant, ActionLog
+from app.models import StudyReport, ReportTemplate, Participant, TestResult, ActionLog
 from app.editions import get_current_edition_id, get_edition
 from app.menu import MENU_ITEMS
 from app.reports.generator import render_template as render_report_template
 from app.reports.report_data import build_participant_placeholders
+from app.results.scoring import build_compilation_rows, build_category_winners
 
 reports_bp = Blueprint("reports", __name__, url_prefix="/reports")
 
@@ -137,6 +138,25 @@ def create_report():
     participant = Participant.query.filter_by(id=int(participant_id), edition_id=edition_id).first()
     if not template or not participant:
         flash("Modèle ou participant introuvable pour cette édition.", "error")
+        return redirect(url_for("reports.list_reports"))
+
+    # Le rapport compare systématiquement chaque participant aux lauréats de
+    # l'édition (note globale, notes par canal, accessibilité...) : sans
+    # aucun lauréat calculable, la quasi-totalité du rapport serait vide ou
+    # trompeuse. On le signale clairement plutôt que de laisser échouer la
+    # génération avec une liste de balises non reconnues.
+    all_participants = Participant.query.filter_by(edition_id=edition_id).all()
+    all_tests = TestResult.query.filter_by(edition_id=edition_id).all()
+    rows = build_compilation_rows(all_participants, all_tests)
+    if not build_category_winners(rows):
+        flash(
+            "Aucun lauréat n'a pu être déterminé pour cette édition (aucun "
+            "résultat chargé, ou aucun participant n'atteint 11,5/20 et le "
+            "1er rang de sa catégorie). Le rapport d'étude ne peut pas être "
+            "généré : chargez les fichiers de résultats de toute l'édition, "
+            "vérifiez « Liste des lauréats », puis réessayez.",
+            "error",
+        )
         return redirect(url_for("reports.list_reports"))
 
     values = build_participant_placeholders(participant, edition_id)
