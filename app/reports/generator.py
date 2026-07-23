@@ -69,7 +69,12 @@ def _color_counterpart_tag(normalized_tag):
     """Le tag « ... vous »/« ... catégorie » -> le tag « ... tous »
     correspondant sur la même ligne, ou None si ce n'est pas un tag de ce
     type (ex. « ... tous »/« ... laureats » eux-mêmes, ou tag non numérique
-    comme {{PARTICIPANT}})."""
+    comme {{PARTICIPANT}}). Les temps moyens (« temps acces/prise/totale
+    phone ... », partie gauche de la diapo 13) sont explicitement exclus :
+    confirmé, pas de coloration vert/rouge sur ces durées, uniquement sur
+    les notes/pourcentages de la partie droite."""
+    if normalized_tag.startswith("temps "):
+        return None
     for suffix in (" vous", " categorie"):
         if normalized_tag.endswith(suffix):
             return normalized_tag[: -len(suffix)] + " tous"
