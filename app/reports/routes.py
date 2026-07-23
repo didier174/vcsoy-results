@@ -15,6 +15,7 @@ import re
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
 from flask_login import login_required, current_user
+from pptx import Presentation
 
 from app.access_control import admin_required
 from app.extensions import db
@@ -23,6 +24,7 @@ from app.editions import get_current_edition_id, get_edition
 from app.menu import MENU_ITEMS
 from app.reports.generator import render_template as render_report_template
 from app.reports.report_data import build_participant_placeholders
+from app.reports.report_visuals import apply_report_visuals
 from app.results.scoring import build_compilation_rows, build_category_winners
 
 reports_bp = Blueprint("reports", __name__, url_prefix="/reports")
@@ -170,6 +172,15 @@ def create_report():
             "error",
         )
         return redirect(url_for("reports.list_reports"))
+
+    # Graphiques natifs (jauge diapo 9, mapping d'importance diapos
+    # 14/18/22/26/30) : pas de simples balises texte, on les met à jour
+    # directement sur la présentation déjà générée.
+    prs = Presentation(io.BytesIO(file_bytes))
+    apply_report_visuals(prs, participant, edition_id)
+    out = io.BytesIO()
+    prs.save(out)
+    file_bytes = out.getvalue()
 
     name = _sanitize_report_filename(report_filename)
     filename = f"{name}.pptx"
