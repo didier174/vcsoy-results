@@ -150,17 +150,22 @@ def find_tags(template_bytes):
     return tags
 
 
-def render_template(template_bytes, values):
+def substitute_tags(prs, values):
     """
-    template_bytes : contenu binaire du modèle .pptx.
+    Remplace en place toutes les balises {{ ... }} d'une Presentation déjà
+    ouverte (utilisé directement par reports/routes.py pour enchaîner avec
+    la mise à jour des graphiques natifs sur le même objet, sans reparser
+    une deuxième fois le .pptx — ce double parsing d'un modèle de plusieurs
+    Mo pouvait à lui seul faire dépasser la mémoire disponible sur le plan
+    Render gratuit).
+
     values : dict {nom de balise: valeur}. La correspondance balise/clé
     ignore la casse et les espaces superflus (ex. {{ PARTICIPANT }} et
     {{ participant }} pointent tous deux vers la clé "Participant").
 
-    Retourne (bytes du .pptx généré, ensemble des balises inconnues
-    rencontrées dans le modèle mais absentes de `values`).
+    Retourne l'ensemble des balises inconnues rencontrées dans le modèle
+    mais absentes de `values`.
     """
-    prs = Presentation(io.BytesIO(template_bytes))
     lookup = {_normalize(key): value for key, value in values.items()}
 
     unknown = set()
@@ -171,7 +176,20 @@ def render_template(template_bytes, values):
                 text = _paragraph_text(paragraph)
                 unknown.update(tag for tag in TAG_RE.findall(text) if _normalize(tag) not in lookup)
                 _substitute_paragraph(paragraph, lookup, color_enabled=color_enabled)
+    return unknown
 
+
+def render_template(template_bytes, values):
+    """
+    template_bytes : contenu binaire du modèle .pptx.
+
+    Retourne (bytes du .pptx généré, ensemble des balises inconnues). Voir
+    substitute_tags pour le détail ; cette fonction reste une commodité
+    pour un appelant qui n'a besoin que du texte (pas des graphiques
+    natifs).
+    """
+    prs = Presentation(io.BytesIO(template_bytes))
+    unknown = substitute_tags(prs, values)
     out = io.BytesIO()
     prs.save(out)
     return out.getvalue(), unknown

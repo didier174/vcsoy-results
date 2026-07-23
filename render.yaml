@@ -9,7 +9,13 @@ services:
     # rapports PPTX). La génération de scénarios par IA tourne en
     # arrière-plan (voir app/scenarios/routes.py, _run_generation) et ne
     # dépend donc plus de ce timeout, aussi longue soit-elle.
-    startCommand: "gunicorn wsgi:app --timeout 120"
+    # --max-requests 30 --max-requests-jitter 10 : sur le plan gratuit (peu
+    # de mémoire), un worker gunicorn qui traite beaucoup de générations de
+    # rapports d'étude à la chaîne (édition à 50 participants) peut ne
+    # jamais rendre à l'OS la mémoire momentanément utilisée par un modèle
+    # .pptx volumineux. On force un redémarrage périodique du worker
+    # (mémoire remise à zéro), sans jamais couper une requête en cours.
+    startCommand: "gunicorn wsgi:app --timeout 120 --max-requests 30 --max-requests-jitter 10"
     envVars:
       - key: SECRET_KEY
         generateValue: true

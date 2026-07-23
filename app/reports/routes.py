@@ -22,7 +22,7 @@ from app.extensions import db
 from app.models import StudyReport, ReportTemplate, Participant, TestResult, ActionLog
 from app.editions import get_current_edition_id, get_edition
 from app.menu import MENU_ITEMS
-from app.reports.generator import render_template as render_report_template
+from app.reports.generator import substitute_tags
 from app.reports.report_data import build_participant_placeholders
 from app.reports.report_visuals import apply_report_visuals
 from app.results.scoring import build_compilation_rows, build_category_winners
@@ -164,7 +164,12 @@ def create_report():
     values = build_participant_placeholders(
         participant, edition_id, all_participants=all_participants, all_tests=all_tests, rows=rows
     )
-    file_bytes, unknown_tags = render_report_template(template.file_data, values)
+
+    # Un seul parsing du modèle (.pptx de plusieurs Mo) pour les balises
+    # texte ET les graphiques natifs : le reparser une seconde fois (comme
+    # avant) doublait inutilement la mémoire utilisée par requête.
+    prs = Presentation(io.BytesIO(template.file_data))
+    unknown_tags = substitute_tags(prs, values)
 
     if unknown_tags:
         flash(
@@ -185,13 +190,13 @@ def create_report():
     # rapport avec les balises texte déjà remplies plutôt que de faire
     # échouer toute la génération.
     try:
-        prs = Presentation(io.BytesIO(file_bytes))
         apply_report_visuals(prs, participant, edition_id, all_tests=all_tests, rows=rows)
-        out = io.BytesIO()
-        prs.save(out)
-        file_bytes = out.getvalue()
     except Exception:
         current_app.logger.exception("Échec de la mise à jour des graphiques natifs du rapport d'étude")
+
+    out = io.BytesIO()
+    prs.save(out)
+    file_bytes = out.getvalue()
 
     name = _sanitize_report_filename(report_filename)
     filename = f"{name}.pptx"
