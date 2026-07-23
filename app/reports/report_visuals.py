@@ -247,6 +247,94 @@ def _set_axis_range(axis_el, data_min, data_max, crosses_at):
         crosses_el.set("val", repr(crosses_at))
 
 
+# Distance (position normalisée 0-1 sur chaque axe) en dessous de laquelle 2
+# points sont jugés trop proches pour que leurs étiquettes cohabitent sans se
+# chevaucher, et écart vertical ajouté entre étiquettes d'un même groupe
+# repéré ainsi — valeurs choisies pour rester discrètes par rapport aux
+# décalages (0,1 à 0,2) déjà réglés à la main dans le modèle.
+LABEL_MIN_SEPARATION = 0.09
+LABEL_FANOUT_STEP = 0.055
+
+
+def _dlbl_layout_offset(dlbl):
+    layout = dlbl.find(qn("c:layout"))
+    ml = layout.find(qn("c:manualLayout")) if layout is not None else None
+    x_el = ml.find(qn("c:x")) if ml is not None else None
+    y_el = ml.find(qn("c:y")) if ml is not None else None
+    dx = float(x_el.get("val")) if x_el is not None else 0.0
+    dy = float(y_el.get("val")) if y_el is not None else 0.0
+    return dx, dy
+
+
+def _set_dlbl_layout_offset(dlbl, dx, dy):
+    layout = dlbl.find(qn("c:layout"))
+    if layout is None:
+        # <c:layout> doit être placé juste après <c:idx> (ordre imposé par
+        # le schéma), avant <c:tx>/<c:spPr>/... — jamais en fin d'élément.
+        layout = etree.Element(qn("c:layout"))
+        dlbl.find(qn("c:idx")).addnext(layout)
+    ml = layout.find(qn("c:manualLayout"))
+    if ml is None:
+        ml = etree.SubElement(layout, qn("c:manualLayout"))
+    x_el = ml.find(qn("c:x"))
+    if x_el is None:
+        x_el = etree.SubElement(ml, qn("c:x"))
+    x_el.set("val", repr(dx))
+    y_el = ml.find(qn("c:y"))
+    if y_el is None:
+        y_el = etree.SubElement(ml, qn("c:y"))
+    y_el.set("val", repr(dy))
+
+
+def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, y_max):
+    """Écarte verticalement les étiquettes des points trop proches les uns
+    des autres (fréquent : plusieurs critères peuvent obtenir exactement le
+    même taux de conformité). Le décalage s'ajoute à celui déjà réglé dans
+    le modèle plutôt que de l'écraser, pour garder l'orientation d'origine
+    de chaque étiquette. Le trait de rappel (déjà activé dans le modèle,
+    voir showLeaderLines) suit alors automatiquement l'étiquette jusqu'à sa
+    nouvelle position — PowerPoint le calcule à l'affichage, pas besoin de
+    le dessiner ici."""
+    dlbls_el = ser_el.find(qn("c:dLbls"))
+    if dlbls_el is None:
+        return
+    dlbl_by_idx = {}
+    for dlbl in dlbls_el.findall(qn("c:dLbl")):
+        idx_el = dlbl.find(qn("c:idx"))
+        if idx_el is not None:
+            dlbl_by_idx[int(idx_el.get("val"))] = dlbl
+
+    def norm(v, lo, hi):
+        return (v - lo) / (hi - lo) if hi > lo else 0.5
+
+    points = [
+        (idx, norm(x_by_idx[idx], x_min, x_max), norm(y_by_idx[idx], y_min, y_max))
+        for idx in sorted(x_by_idx)
+        if idx in dlbl_by_idx
+    ]
+
+    groups = []
+    for idx, nx, ny in points:
+        target = next(
+            (g for g in groups if any(((nx - gx) ** 2 + (ny - gy) ** 2) ** 0.5 < LABEL_MIN_SEPARATION for _, gx, gy in g)),
+            None,
+        )
+        if target is None:
+            target = []
+            groups.append(target)
+        target.append((idx, nx, ny))
+
+    for group in groups:
+        n = len(group)
+        if n < 2:
+            continue
+        for rank, (idx, _, _) in enumerate(group):
+            dlbl = dlbl_by_idx[idx]
+            dx, dy = _dlbl_layout_offset(dlbl)
+            dy += (rank - (n - 1) / 2) * LABEL_FANOUT_STEP
+            _set_dlbl_layout_offset(dlbl, dx, dy)
+
+
 def apply_importance_mappings(prs, participant, edition_id, all_tests=None):
     if all_tests is None:
         all_tests = TestResult.query.filter_by(edition_id=edition_id).all()
@@ -307,8 +395,11 @@ def apply_importance_mappings(prs, participant, edition_id, all_tests=None):
         if x_by_idx and y_by_idx:
             x_axis, y_axis = _scatter_axes(chart_xml)
             xs, ys = list(x_by_idx.values()), list(y_by_idx.values())
+            x_min, x_max = min(xs) - MAPPING_AXIS_PADDING, max(xs) + MAPPING_AXIS_PADDING
+            y_min, y_max = min(ys) - MAPPING_AXIS_PADDING, max(ys) + MAPPING_AXIS_PADDING
             _set_axis_range(x_axis, min(xs), max(xs), statistics.median(ys))
             _set_axis_range(y_axis, min(ys), max(ys), statistics.median(xs))
+            _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, y_max)
 
 
 def apply_report_visuals(prs, participant, edition_id, all_tests=None, rows=None):
