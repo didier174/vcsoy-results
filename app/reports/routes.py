@@ -13,7 +13,7 @@ import io
 import mimetypes
 import re
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
+from flask import Blueprint, current_app, render_template, request, redirect, url_for, flash, send_file
 from flask_login import login_required, current_user
 from pptx import Presentation
 
@@ -161,7 +161,9 @@ def create_report():
         )
         return redirect(url_for("reports.list_reports"))
 
-    values = build_participant_placeholders(participant, edition_id)
+    values = build_participant_placeholders(
+        participant, edition_id, all_participants=all_participants, all_tests=all_tests, rows=rows
+    )
     file_bytes, unknown_tags = render_report_template(template.file_data, values)
 
     if unknown_tags:
@@ -175,12 +177,21 @@ def create_report():
 
     # Graphiques natifs (jauge diapo 9, mapping d'importance diapos
     # 14/18/22/26/30) : pas de simples balises texte, on les met à jour
-    # directement sur la présentation déjà générée.
-    prs = Presentation(io.BytesIO(file_bytes))
-    apply_report_visuals(prs, participant, edition_id)
-    out = io.BytesIO()
-    prs.save(out)
-    file_bytes = out.getvalue()
+    # directement sur la présentation déjà générée. On réutilise all_tests/rows
+    # déjà calculés ci-dessus (tous les tests de l'édition) pour ne pas
+    # retriper/recalculer la même chose 3 fois dans la même requête.
+    # Best-effort : si un modèle ne correspond pas exactement à la structure
+    # attendue (nom de forme, type de graphique...), on préfère livrer le
+    # rapport avec les balises texte déjà remplies plutôt que de faire
+    # échouer toute la génération.
+    try:
+        prs = Presentation(io.BytesIO(file_bytes))
+        apply_report_visuals(prs, participant, edition_id, all_tests=all_tests, rows=rows)
+        out = io.BytesIO()
+        prs.save(out)
+        file_bytes = out.getvalue()
+    except Exception:
+        current_app.logger.exception("Échec de la mise à jour des graphiques natifs du rapport d'étude")
 
     name = _sanitize_report_filename(report_filename)
     filename = f"{name}.pptx"

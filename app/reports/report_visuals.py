@@ -40,15 +40,16 @@ GAUGE_ROW_ORDER = ["global", "phone", "mail", "web", "rs", "chat"]
 GAUGE_UNTESTED_TEXT_SHAPES = {"mail": "ZoneTexteMail", "rs": "ZoneTexteRes"}
 
 
-def apply_gauge_chart(prs, participant, edition_id):
+def apply_gauge_chart(prs, participant, edition_id, rows=None):
     slide = prs.slides[8]  # diapositive 9
     chart_shape = next((s for s in slide.shapes if s.name == "Graph_Bar"), None)
     if chart_shape is None or not chart_shape.has_chart:
         return
 
-    all_participants = Participant.query.filter_by(edition_id=edition_id).all()
-    all_tests = TestResult.query.filter_by(edition_id=edition_id).all()
-    rows = build_compilation_rows(all_participants, all_tests)
+    if rows is None:
+        all_participants = Participant.query.filter_by(edition_id=edition_id).all()
+        all_tests = TestResult.query.filter_by(edition_id=edition_id).all()
+        rows = build_compilation_rows(all_participants, all_tests)
     own_row = next((r for r in rows if r["participant_id"] == participant.id), None)
 
     channel_flags = {
@@ -135,8 +136,9 @@ def _criterion_pct_vous(channel, code, vous_tests):
     return (stats["pct"] or 0) / 100.0
 
 
-def apply_importance_mappings(prs, participant, edition_id):
-    all_tests = TestResult.query.filter_by(edition_id=edition_id).all()
+def apply_importance_mappings(prs, participant, edition_id, all_tests=None):
+    if all_tests is None:
+        all_tests = TestResult.query.filter_by(edition_id=edition_id).all()
     vous_tests_by_channel = {
         channel: [t for t in all_tests if t.participant_id == participant.id and t.channel == channel]
         for channel in CHANNEL_ORDER
@@ -187,9 +189,13 @@ def apply_importance_mappings(prs, participant, edition_id):
                 _set_numlit_points(numlit, y_by_idx)
 
 
-def apply_report_visuals(prs, participant, edition_id):
+def apply_report_visuals(prs, participant, edition_id, all_tests=None, rows=None):
     """Point d'entrée unique : applique la jauge (diapo 9) et les 5
     mappings d'importance (diapos 14/18/22/26/30) sur une Presentation déjà
-    ouverte (après substitution des balises texte)."""
-    apply_gauge_chart(prs, participant, edition_id)
-    apply_importance_mappings(prs, participant, edition_id)
+    ouverte (après substitution des balises texte).
+
+    all_tests/rows : déjà calculés par l'appelant (voir reports/routes.py)
+    pour éviter de refaire ces requêtes/calculs coûteux (tous les tests de
+    l'édition) plusieurs fois dans la même requête HTTP."""
+    apply_gauge_chart(prs, participant, edition_id, rows=rows)
+    apply_importance_mappings(prs, participant, edition_id, all_tests=all_tests)

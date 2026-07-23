@@ -141,17 +141,25 @@ def _extract_clicks(raw_data):
     return int(match.group(0)) if match else None
 
 
-def build_participant_placeholders(participant, edition_id):
+def build_participant_placeholders(participant, edition_id, all_participants=None, all_tests=None, rows=None):
+    """
+    all_participants/all_tests/rows : déjà calculés par l'appelant (voir
+    reports/routes.py) pour éviter de refaire ces requêtes/calculs coûteux
+    (tous les tests de l'édition) plusieurs fois dans la même requête HTTP
+    — recalculés ici uniquement si absents, pour rester utilisable seule.
+    """
     values = {
         "Participant": participant.participant_name,
         "Code participant": participant.code,
         "Catégorie": participant.category_label(),
     }
 
-    all_participants = Participant.query.filter_by(edition_id=edition_id).all()
-    all_tests = TestResult.query.filter_by(edition_id=edition_id).all()
-
-    rows = build_compilation_rows(all_participants, all_tests)
+    if all_participants is None:
+        all_participants = Participant.query.filter_by(edition_id=edition_id).all()
+    if all_tests is None:
+        all_tests = TestResult.query.filter_by(edition_id=edition_id).all()
+    if rows is None:
+        rows = build_compilation_rows(all_participants, all_tests)
     row_by_pid = {r["participant_id"]: r for r in rows}
     own_row = row_by_pid.get(participant.id)
 
