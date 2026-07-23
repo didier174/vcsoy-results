@@ -18,6 +18,7 @@ avant de générer un rapport d'étude (rappelé dans l'interface, voir
 reports/routes.py).
 """
 
+import re
 from collections import defaultdict
 
 from app.models import TestResult, Participant
@@ -60,7 +61,12 @@ def _channel_note20_list(channel, tests):
 
 
 def _parse_minsec(raw_data, min_key, sec_key):
+    """None si les deux colonnes sont vides (ex. Code 10 Navig Time IVR
+    quand l'appel n'est jamais passé par un SVI) : à ne pas confondre avec
+    une vraie durée de 0 seconde, qui fausserait la moyenne à la baisse."""
     m, s = raw_data.get(min_key), raw_data.get(sec_key)
+    if m in (None, "") and s in (None, ""):
+        return None
     try:
         m = float(m) if m not in (None, "") else 0.0
         s = float(s) if s not in (None, "") else 0.0
@@ -103,14 +109,21 @@ def _mail_business_hours(raw_data):
 
 
 def _duration_like_seconds(raw_data, key):
-    """Une durée Excel (ex. 'Test Duration', 'Respond Time', 'Call Duration')
-    est stockée en base comme un nombre de secondes (float) — voir
-    validation._json_safe, qui appelle .total_seconds() sur tout
-    datetime.timedelta au moment du chargement du fichier. Retourne None si
-    absente/illisible."""
+    """
+    Une durée Excel (ex. 'Test Duration', 'Respond Time', 'Call Duration')
+    arrive sous deux formes possibles selon le format de la cellule source,
+    toutes deux passées par validation._json_safe au chargement du fichier :
+    - cellule "durée" (datetime.timedelta) -> nombre de secondes (float) ;
+    - cellule "heure" (datetime.time, cas le plus courant en pratique pour
+      ces colonnes) -> chaîne "HH:MM:SS" (.isoformat()), à reconvertir ici.
+    Retourne None si absente/illisible.
+    """
     value = raw_data.get(key)
     if value is None or value == "":
         return None
+    if isinstance(value, str) and re.match(r"^\d{1,2}:\d{2}:\d{2}", value):
+        h, m, s = (int(p) for p in value.split(":")[:3])
+        return h * 3600 + m * 60 + s
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -121,7 +134,6 @@ def _extract_clicks(raw_data):
     """Le nombre de clics web n'est pas dans une colonne dédiée : il est
     écrit en toutes lettres dans 'Code 5 Obs' (ex. '6 clicks to find the
     answer', confirmé). On extrait le premier nombre entier trouvé."""
-    import re
     text = raw_data.get("Code 5 Obs")
     if not text:
         return None
@@ -181,11 +193,21 @@ def build_participant_placeholders(participant, edition_id):
     }
 
     # ------------------------------------------- Tableaux détaillés par critère
+    #
+    # Confirmé : le détail par critère (nb/note/%) ne compte que les tests
+    # "propres" (QS = Completed, là où cette colonne existe), contrairement
+    # au "Total" du canal qui lui compte tous les tests tentés — c'est pour
+    # ça que le modèle d'origine affichait un nb différent par critère (123)
+    # et sur la ligne "Total" (130).
     for channel in CHANNEL_ORDER:
         for code in CRITERIA_BY_CHANNEL[channel]:
             stats = {
                 scope: compute_criterion_stats(
-                    channel, code, [t.raw_data for t in tests_for(scope_ids[scope], channel)]
+                    channel, code,
+                    [
+                        t.raw_data for t in tests_for(scope_ids[scope], channel)
+                        if is_test_completed(channel, t.raw_data or {})
+                    ],
                 )
                 for scope in SCOPE_KEYS
             }
