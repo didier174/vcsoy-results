@@ -248,12 +248,10 @@ def _set_axis_range(axis_el, data_min, data_max, crosses_at):
 
 
 # Distance (position normalisée 0-1 sur chaque axe) en dessous de laquelle 2
-# points sont jugés trop proches pour que leurs étiquettes cohabitent sans se
-# chevaucher, et écart vertical ajouté entre étiquettes d'un même groupe
-# repéré ainsi — valeurs choisies pour rester discrètes par rapport aux
-# décalages (0,1 à 0,2) déjà réglés à la main dans le modèle.
-LABEL_MIN_SEPARATION = 0.09
-LABEL_FANOUT_STEP = 0.055
+# étiquettes sont jugées trop proches pour cohabiter sans se chevaucher, et
+# écart ajouté entre étiquettes d'un même groupe repéré ainsi.
+LABEL_MIN_SEPARATION = 0.12
+LABEL_FANOUT_STEP = 0.08
 
 
 def _dlbl_layout_offset(dlbl):
@@ -287,14 +285,16 @@ def _set_dlbl_layout_offset(dlbl, dx, dy):
 
 
 def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, y_max):
-    """Écarte verticalement les étiquettes des points trop proches les uns
-    des autres (fréquent : plusieurs critères peuvent obtenir exactement le
-    même taux de conformité). Le décalage s'ajoute à celui déjà réglé dans
-    le modèle plutôt que de l'écraser, pour garder l'orientation d'origine
-    de chaque étiquette. Le trait de rappel (déjà activé dans le modèle,
-    voir showLeaderLines) suit alors automatiquement l'étiquette jusqu'à sa
-    nouvelle position — PowerPoint le calcule à l'affichage, pas besoin de
-    le dessiner ici."""
+    """Écarte les étiquettes des points dont l'étiquette (position du point
+    + décalage déjà réglé dans le modèle) finit trop près d'une autre —
+    fréquent : plusieurs critères peuvent obtenir exactement le même taux
+    de conformité, mais 2 points éloignés dont les étiquettes ont été
+    orientées l'une vers l'autre peuvent tout autant se chevaucher. Le
+    décalage supplémentaire s'ajoute à celui du modèle plutôt que de
+    l'écraser, pour garder son orientation d'origine. Le trait de rappel
+    (déjà activé dans le modèle, voir showLeaderLines) suit alors
+    automatiquement l'étiquette jusqu'à sa nouvelle position — PowerPoint
+    le calcule à l'affichage, pas besoin de le dessiner ici."""
     dlbls_el = ser_el.find(qn("c:dLbls"))
     if dlbls_el is None:
         return
@@ -307,31 +307,53 @@ def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, 
     def norm(v, lo, hi):
         return (v - lo) / (hi - lo) if hi > lo else 0.5
 
-    points = [
-        (idx, norm(x_by_idx[idx], x_min, x_max), norm(y_by_idx[idx], y_min, y_max))
-        for idx in sorted(x_by_idx)
-        if idx in dlbl_by_idx
-    ]
+    anchors = {}
+    for idx in x_by_idx:
+        if idx not in dlbl_by_idx:
+            continue
+        nx = norm(x_by_idx[idx], x_min, x_max)
+        ny = norm(y_by_idx[idx], y_min, y_max)
+        dx, dy = _dlbl_layout_offset(dlbl_by_idx[idx])
+        anchors[idx] = (nx + dx, ny + dy)
 
-    groups = []
-    for idx, nx, ny in points:
-        target = next(
-            (g for g in groups if any(((nx - gx) ** 2 + (ny - gy) ** 2) ** 0.5 < LABEL_MIN_SEPARATION for _, gx, gy in g)),
-            None,
-        )
-        if target is None:
-            target = []
-            groups.append(target)
-        target.append((idx, nx, ny))
+    # Composantes connexes (union-find) : gère aussi bien une simple paire
+    # qu'une chaîne de 3+ étiquettes proches les unes des autres.
+    parent = {idx: idx for idx in anchors}
 
-    for group in groups:
-        n = len(group)
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def union(i, j):
+        ri, rj = find(i), find(j)
+        if ri != rj:
+            parent[ri] = rj
+
+    idxs = list(anchors)
+    for i in range(len(idxs)):
+        xi, yi = anchors[idxs[i]]
+        for j in range(i + 1, len(idxs)):
+            xj, yj = anchors[idxs[j]]
+            if ((xi - xj) ** 2 + (yi - yj) ** 2) ** 0.5 < LABEL_MIN_SEPARATION:
+                union(idxs[i], idxs[j])
+
+    groups = {}
+    for idx in idxs:
+        groups.setdefault(find(idx), []).append(idx)
+
+    for members in groups.values():
+        n = len(members)
         if n < 2:
             continue
-        for rank, (idx, _, _) in enumerate(group):
+        members.sort(key=lambda idx: anchors[idx][1])
+        for rank, idx in enumerate(members):
             dlbl = dlbl_by_idx[idx]
             dx, dy = _dlbl_layout_offset(dlbl)
-            dy += (rank - (n - 1) / 2) * LABEL_FANOUT_STEP
+            offset_rank = rank - (n - 1) / 2
+            dy += offset_rank * LABEL_FANOUT_STEP
+            dx += (LABEL_FANOUT_STEP * 0.5) * (1 if rank % 2 == 0 else -1)
             _set_dlbl_layout_offset(dlbl, dx, dy)
 
 
