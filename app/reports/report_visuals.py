@@ -247,11 +247,12 @@ def _set_axis_range(axis_el, data_min, data_max, crosses_at):
         crosses_el.set("val", repr(crosses_at))
 
 
-# Distance (position normalisée 0-1 sur chaque axe) en dessous de laquelle 2
-# étiquettes sont jugées trop proches pour cohabiter sans se chevaucher, et
-# écart ajouté entre étiquettes d'un même groupe repéré ainsi.
-LABEL_MIN_SEPARATION = 0.12
-LABEL_FANOUT_STEP = 0.08
+# Ellipse de collision (position normalisée 0-1 sur chaque axe) en dessous
+# de laquelle 2 étiquettes sont jugées trop proches pour cohabiter sans se
+# chevaucher : rayon horizontal plus grand que le vertical, le texte d'une
+# étiquette étant large mais bas (1-2 lignes).
+COLLISION_SEP_X = 0.16
+COLLISION_SEP_Y = 0.075
 
 
 def _dlbl_layout_offset(dlbl):
@@ -285,16 +286,25 @@ def _set_dlbl_layout_offset(dlbl, dx, dy):
 
 
 def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, y_max):
-    """Écarte les étiquettes des points dont l'étiquette (position du point
-    + décalage déjà réglé dans le modèle) finit trop près d'une autre —
-    fréquent : plusieurs critères peuvent obtenir exactement le même taux
-    de conformité, mais 2 points éloignés dont les étiquettes ont été
-    orientées l'une vers l'autre peuvent tout autant se chevaucher. Le
-    décalage supplémentaire s'ajoute à celui du modèle plutôt que de
-    l'écraser, pour garder son orientation d'origine. Le trait de rappel
-    (déjà activé dans le modèle, voir showLeaderLines) suit alors
-    automatiquement l'étiquette jusqu'à sa nouvelle position — PowerPoint
-    le calcule à l'affichage, pas besoin de le dessiner ici."""
+    """Écarte verticalement les étiquettes dont la position finale (point +
+    décalage déjà réglé dans le modèle) finit trop près d'une autre — 2
+    points éloignés dont les étiquettes ont été orientées l'une vers
+    l'autre peuvent se chevaucher tout autant que 2 points proches. On ne
+    déplace que verticalement (dx du modèle conservé tel quel) : le texte
+    d'une étiquette est large mais bas, un écart vertical suffit à lever le
+    chevauchement sans avoir à mesurer sa largeur réelle.
+
+    Algorithme : balayage du bas vers le haut (une seule passe, donc pas
+    d'oscillation possible contrairement à un regroupement itératif). Pour
+    chaque étiquette, dans l'ordre de sa position d'origine, on la repousse
+    juste assez vers le haut pour respecter l'ellipse de collision avec
+    CHAQUE étiquette déjà placée en dessous d'elle. Le résultat est ensuite
+    recentré (translation globale) pour compenser la dérive qu'un balayage
+    à sens unique introduit forcément.
+
+    Le trait de rappel (déjà activé dans le modèle, voir showLeaderLines)
+    suit alors automatiquement l'étiquette jusqu'à sa nouvelle position —
+    PowerPoint le calcule à l'affichage, pas besoin de le dessiner ici."""
     dlbls_el = ser_el.find(qn("c:dLbls"))
     if dlbls_el is None:
         return
@@ -307,54 +317,37 @@ def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, 
     def norm(v, lo, hi):
         return (v - lo) / (hi - lo) if hi > lo else 0.5
 
-    anchors = {}
+    points = []
     for idx in x_by_idx:
         if idx not in dlbl_by_idx:
             continue
         nx = norm(x_by_idx[idx], x_min, x_max)
         ny = norm(y_by_idx[idx], y_min, y_max)
-        dx, dy = _dlbl_layout_offset(dlbl_by_idx[idx])
-        anchors[idx] = (nx + dx, ny + dy)
+        dx, dy0 = _dlbl_layout_offset(dlbl_by_idx[idx])
+        points.append((idx, nx + dx, ny + dy0))
+    if not points:
+        return
 
-    # Composantes connexes (union-find) : gère aussi bien une simple paire
-    # qu'une chaîne de 3+ étiquettes proches les unes des autres.
-    parent = {idx: idx for idx in anchors}
+    points.sort(key=lambda p: p[2])
+    placed = []
+    final_y = {}
+    for idx, ax, orig_y in points:
+        y = orig_y
+        for other_x, other_y in placed:
+            ex = ax - other_x
+            if abs(ex) < COLLISION_SEP_X:
+                min_gap = COLLISION_SEP_Y * (1 - (ex / COLLISION_SEP_X) ** 2) ** 0.5
+                y = max(y, other_y + min_gap)
+        placed.append((ax, y))
+        final_y[idx] = y
 
-    def find(i):
-        while parent[i] != i:
-            parent[i] = parent[parent[i]]
-            i = parent[i]
-        return i
+    drift = sum(final_y.values()) / len(final_y) - sum(p[2] for p in points) / len(points)
 
-    def union(i, j):
-        ri, rj = find(i), find(j)
-        if ri != rj:
-            parent[ri] = rj
-
-    idxs = list(anchors)
-    for i in range(len(idxs)):
-        xi, yi = anchors[idxs[i]]
-        for j in range(i + 1, len(idxs)):
-            xj, yj = anchors[idxs[j]]
-            if ((xi - xj) ** 2 + (yi - yj) ** 2) ** 0.5 < LABEL_MIN_SEPARATION:
-                union(idxs[i], idxs[j])
-
-    groups = {}
-    for idx in idxs:
-        groups.setdefault(find(idx), []).append(idx)
-
-    for members in groups.values():
-        n = len(members)
-        if n < 2:
-            continue
-        members.sort(key=lambda idx: anchors[idx][1])
-        for rank, idx in enumerate(members):
-            dlbl = dlbl_by_idx[idx]
-            dx, dy = _dlbl_layout_offset(dlbl)
-            offset_rank = rank - (n - 1) / 2
-            dy += offset_rank * LABEL_FANOUT_STEP
-            dx += (LABEL_FANOUT_STEP * 0.5) * (1 if rank % 2 == 0 else -1)
-            _set_dlbl_layout_offset(dlbl, dx, dy)
+    for idx, ax, orig_y in points:
+        dlbl = dlbl_by_idx[idx]
+        dx, dy0 = _dlbl_layout_offset(dlbl)
+        new_dy = dy0 + (final_y[idx] - drift - orig_y)
+        _set_dlbl_layout_offset(dlbl, dx, new_dy)
 
 
 def apply_importance_mappings(prs, participant, edition_id, all_tests=None):
