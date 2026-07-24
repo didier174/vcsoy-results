@@ -310,7 +310,14 @@ def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, 
 
     Le trait de rappel (déjà activé dans le modèle, voir showLeaderLines)
     suit alors automatiquement l'étiquette jusqu'à sa nouvelle position —
-    PowerPoint le calcule à l'affichage, pas besoin de le dessiner ici."""
+    PowerPoint le calcule à l'affichage, pas besoin de le dessiner ici.
+
+    Piège : c:manualLayout x/y est exprimé dans le repère de mise en page
+    du GRAPHIQUE (haut de la zone = 0, vers le bas = positif), l'inverse du
+    repère des DONNÉES qu'on utilise ici pour nx/ny (valeur qui augmente =
+    vers le haut). On travaille donc en interne avec vy = -dy (repère
+    "visuel", cohérent avec ny), et on réinverse le signe au moment
+    d'écrire la valeur dans le XML."""
     dlbls_el = ser_el.find(qn("c:dLbls"))
     if dlbls_el is None:
         return
@@ -338,8 +345,9 @@ def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, 
         nx = norm(x_by_idx[idx], x_min, x_max)
         ny = norm(y_by_idx[idx], y_min, y_max)
         dx0, dy0 = _dlbl_layout_offset(dlbl_by_idx[idx])
+        vy0 = -dy0  # repère "visuel" (haut = grand), voir note ci-dessus
         ax = clamp_to_quadrant(nx + dx0, cx, nx >= cx)
-        points.append((idx, nx, ny, ax, dy0, ny >= cy))
+        points.append((idx, nx, ny, ax, vy0, ny >= cy))
     if not points:
         return
 
@@ -356,8 +364,8 @@ def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, 
         direction = 1 if above else -1
         group.sort(key=lambda p: direction * (p[2] + p[4]))
         placed = []
-        for idx, nx, ny, ax, dy0, _ in group:
-            y = clamp_to_quadrant(ny + dy0, cy, above)
+        for idx, nx, ny, ax, vy0, _ in group:
+            y = clamp_to_quadrant(ny + vy0, cy, above)
             for other_x, other_y in placed:
                 ex = ax - other_x
                 if abs(ex) < COLLISION_SEP_X:
@@ -366,9 +374,11 @@ def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, 
             placed.append((ax, y))
             final_y[idx] = y
 
-    for idx, nx, ny, ax, dy0, above in points:
+    for idx, nx, ny, ax, vy0, above in points:
         dlbl = dlbl_by_idx[idx]
-        _set_dlbl_layout_offset(dlbl, ax - nx, final_y[idx] - ny)
+        # -(...) : reconversion du repère "visuel" vers celui, inversé, du
+        # c:manualLayout XML (voir note en tête de fonction).
+        _set_dlbl_layout_offset(dlbl, ax - nx, -(final_y[idx] - ny))
 
 
 def apply_importance_mappings(prs, participant, edition_id, all_tests=None):
