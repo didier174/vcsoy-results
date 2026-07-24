@@ -285,22 +285,28 @@ def _set_dlbl_layout_offset(dlbl, dx, dy):
     y_el.set("val", repr(dy))
 
 
-def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, y_max):
-    """Écarte verticalement les étiquettes dont la position finale (point +
-    décalage déjà réglé dans le modèle) finit trop près d'une autre — 2
-    points éloignés dont les étiquettes ont été orientées l'une vers
-    l'autre peuvent se chevaucher tout autant que 2 points proches. On ne
-    déplace que verticalement (dx du modèle conservé tel quel) : le texte
-    d'une étiquette est large mais bas, un écart vertical suffit à lever le
-    chevauchement sans avoir à mesurer sa largeur réelle.
+# Marge (mêmes unités normalisées 0-1) gardée entre une étiquette et la
+# ligne de croisement des axes, pour qu'elle reste nettement à l'intérieur
+# de son quadrant plutôt que juste effleurer la limite.
+QUADRANT_MARGIN = 0.02
 
-    Algorithme : balayage du bas vers le haut (une seule passe, donc pas
-    d'oscillation possible contrairement à un regroupement itératif). Pour
-    chaque étiquette, dans l'ordre de sa position d'origine, on la repousse
-    juste assez vers le haut pour respecter l'ellipse de collision avec
-    CHAQUE étiquette déjà placée en dessous d'elle. Le résultat est ensuite
-    recentré (translation globale) pour compenser la dérive qu'un balayage
-    à sens unique introduit forcément.
+
+def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, y_max, x_crosses, y_crosses):
+    """Écarte les étiquettes dont la position finale (point + décalage déjà
+    réglé dans le modèle) finit trop près d'une autre — 2 points éloignés
+    dont les étiquettes ont été orientées l'une vers l'autre peuvent se
+    chevaucher tout autant que 2 points proches — TOUT EN garantissant que
+    chaque étiquette reste dans le même quadrant que son point (de part et
+    d'autre des lignes de croisement des axes, x_crosses/y_crosses) :
+    confirmé indispensable pour la lecture du mapping.
+
+    Le décalage horizontal déjà réglé dans le modèle est d'abord borné pour
+    rester du bon côté de la ligne verticale. Verticalement, les étiquettes
+    "au-dessus" et "en dessous" de la ligne horizontale sont balayées
+    séparément (chaque groupe comparé uniquement à lui-même), en poussant
+    toujours À L'ÉCART de la ligne plutôt que vers elle : le quadrant est
+    donc respecté par construction, jamais par un plafond appliqué après
+    coup qui laisserait des étiquettes se coincer près de la ligne.
 
     Le trait de rappel (déjà activé dans le modèle, voir showLeaderLines)
     suit alors automatiquement l'étiquette jusqu'à sa nouvelle position —
@@ -317,37 +323,52 @@ def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, 
     def norm(v, lo, hi):
         return (v - lo) / (hi - lo) if hi > lo else 0.5
 
+    cx = norm(x_crosses, x_min, x_max)
+    cy = norm(y_crosses, y_min, y_max)
+
+    def clamp_to_quadrant(value, crossing, is_above):
+        if is_above:
+            return max(value, crossing + QUADRANT_MARGIN)
+        return min(value, crossing - QUADRANT_MARGIN)
+
     points = []
     for idx in x_by_idx:
         if idx not in dlbl_by_idx:
             continue
         nx = norm(x_by_idx[idx], x_min, x_max)
         ny = norm(y_by_idx[idx], y_min, y_max)
-        dx, dy0 = _dlbl_layout_offset(dlbl_by_idx[idx])
-        points.append((idx, nx + dx, ny + dy0))
+        dx0, dy0 = _dlbl_layout_offset(dlbl_by_idx[idx])
+        ax = clamp_to_quadrant(nx + dx0, cx, nx >= cx)
+        points.append((idx, nx, ny, ax, dy0, ny >= cy))
     if not points:
         return
 
-    points.sort(key=lambda p: p[2])
-    placed = []
+    # Balayage séparé pour les étiquettes "au-dessus" et "en dessous" de la
+    # ligne de croisement horizontale : chaque groupe n'est comparé qu'à
+    # lui-même, et le sens du balayage pousse toujours À L'ÉCART de la
+    # ligne (jamais vers elle), ce qui garantit le respect du quadrant par
+    # construction plutôt que par un simple plafond a posteriori.
     final_y = {}
-    for idx, ax, orig_y in points:
-        y = orig_y
-        for other_x, other_y in placed:
-            ex = ax - other_x
-            if abs(ex) < COLLISION_SEP_X:
-                min_gap = COLLISION_SEP_Y * (1 - (ex / COLLISION_SEP_X) ** 2) ** 0.5
-                y = max(y, other_y + min_gap)
-        placed.append((ax, y))
-        final_y[idx] = y
+    for above in (True, False):
+        group = [p for p in points if p[5] == above]
+        if not group:
+            continue
+        direction = 1 if above else -1
+        group.sort(key=lambda p: direction * (p[2] + p[4]))
+        placed = []
+        for idx, nx, ny, ax, dy0, _ in group:
+            y = clamp_to_quadrant(ny + dy0, cy, above)
+            for other_x, other_y in placed:
+                ex = ax - other_x
+                if abs(ex) < COLLISION_SEP_X:
+                    min_gap = COLLISION_SEP_Y * (1 - (ex / COLLISION_SEP_X) ** 2) ** 0.5
+                    y = max(y, other_y + min_gap) if direction > 0 else min(y, other_y - min_gap)
+            placed.append((ax, y))
+            final_y[idx] = y
 
-    drift = sum(final_y.values()) / len(final_y) - sum(p[2] for p in points) / len(points)
-
-    for idx, ax, orig_y in points:
+    for idx, nx, ny, ax, dy0, above in points:
         dlbl = dlbl_by_idx[idx]
-        dx, dy0 = _dlbl_layout_offset(dlbl)
-        new_dy = dy0 + (final_y[idx] - drift - orig_y)
-        _set_dlbl_layout_offset(dlbl, dx, new_dy)
+        _set_dlbl_layout_offset(dlbl, ax - nx, final_y[idx] - ny)
 
 
 def apply_importance_mappings(prs, participant, edition_id, all_tests=None):
@@ -412,9 +433,12 @@ def apply_importance_mappings(prs, participant, edition_id, all_tests=None):
             xs, ys = list(x_by_idx.values()), list(y_by_idx.values())
             x_min, x_max = min(xs) - MAPPING_AXIS_PADDING, max(xs) + MAPPING_AXIS_PADDING
             y_min, y_max = min(ys) - MAPPING_AXIS_PADDING, max(ys) + MAPPING_AXIS_PADDING
-            _set_axis_range(x_axis, min(xs), max(xs), statistics.median(ys))
-            _set_axis_range(y_axis, min(ys), max(ys), statistics.median(xs))
-            _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, y_max)
+            x_crosses, y_crosses = statistics.median(xs), statistics.median(ys)
+            _set_axis_range(x_axis, min(xs), max(xs), y_crosses)
+            _set_axis_range(y_axis, min(ys), max(ys), x_crosses)
+            _spread_overlapping_labels(
+                ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, y_max, x_crosses, y_crosses
+            )
 
 
 def apply_report_visuals(prs, participant, edition_id, all_tests=None, rows=None):
