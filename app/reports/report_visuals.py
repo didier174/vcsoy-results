@@ -20,7 +20,9 @@ manuelle des étiquettes, traits de rappel) déjà réglée dans le modèle.
 """
 
 import copy
+import math
 import statistics
+from itertools import permutations
 
 from lxml import etree
 from pptx.oxml.ns import qn
@@ -309,6 +311,155 @@ def _set_dlbl_layout_offset(dlbl, dx, dy):
 # davantage sans changer l'une d'elles de quadrant.
 QUADRANT_MARGIN = 0.04
 
+MAX_UNCROSS_PASSES = 6
+
+
+def _segments_intersect(p1, p2, p3, p4):
+    def ccw(a, b, c):
+        return (c[1] - a[1]) * (b[0] - a[0]) > (b[1] - a[1]) * (c[0] - a[0])
+    return ccw(p1, p3, p4) != ccw(p2, p3, p4) and ccw(p1, p2, p3) != ccw(p1, p2, p4)
+
+
+def _count_crossings(idxs, point_of, ax, ay):
+    total = 0
+    for i in range(len(idxs)):
+        a = idxs[i]
+        for b in idxs[i + 1:]:
+            if _segments_intersect(point_of[a], (ax[a], ay[a]), point_of[b], (ax[b], ay[b])):
+                total += 1
+    return total
+
+
+def _boxes_overlap(ax_a, ay_a, width_a, ax_b, ay_b, width_b):
+    # width_a/width_b et LABEL_HEIGHT sont des demi-étendues (voir
+    # clamp_box) : 2 boîtes ne se chevauchent pas si distantes d'au moins
+    # la SOMME de leurs demi-étendues respectives, pas leur moyenne.
+    return (
+        abs(ax_a - ax_b) < width_a + width_b + OVERLAP_BUFFER
+        and abs(ay_a - ay_b) < 2 * LABEL_HEIGHT + OVERLAP_BUFFER
+    )
+
+
+def _has_any_overlap(idxs, ax, final_y, width_of):
+    for i in range(len(idxs)):
+        a = idxs[i]
+        for b in idxs[i + 1:]:
+            if _boxes_overlap(ax[a], final_y[a], width_of[a], ax[b], final_y[b], width_of[b]):
+                return True
+    return False
+
+
+def _quadrant_ok(ax, ay, width, nx, ny, cx, cy):
+    if nx >= cx:
+        if ax - width < cx + QUADRANT_MARGIN - 1e-9:
+            return False
+    elif ax + width > cx - QUADRANT_MARGIN + 1e-9:
+        return False
+    if ny >= cy:
+        if ay - LABEL_HEIGHT < cy + QUADRANT_MARGIN - 1e-9:
+            return False
+    elif ay + LABEL_HEIGHT > cy - QUADRANT_MARGIN + 1e-9:
+        return False
+    return True
+
+
+# Taille de groupe (par quadrant) en dessous de laquelle on essaie TOUTES
+# les permutations possibles des emplacements (garantit la meilleure
+# solution possible) ; au-delà, une recherche gloutonne par paires (plus
+# rapide mais pas nécessairement optimale) prend le relais — 8! = 40 320
+# reste instantané, mais un groupe plus grand rendrait le balayage complet
+# trop coûteux pour un simple raffinement visuel.
+EXHAUSTIVE_UNCROSS_LIMIT = 8
+
+
+def _resolve_leader_crossings(points, cx, cy, ax, final_y):
+    """Les traits de rappel (point -> étiquette) ne doivent jamais se
+    croiser entre eux (confirmé indispensable) : l'ordre vertical imposé
+    plus haut l'évite déjà pour la plupart des cas, mais 2 points très
+    proches l'un de l'autre peuvent quand même produire des traits croisés
+    selon leurs décalages horizontaux respectifs (hérités du modèle).
+
+    On ne peut réattribuer les emplacements (ax, ay) de 2 étiquettes qu'à
+    l'intérieur d'un même quadrant (même position par rapport aux 2 lignes
+    de croisement). Comme les étiquettes réattribuées n'ont pas forcément
+    la même largeur, un emplacement valide pour l'une ne l'est pas
+    forcément pour l'autre (règles 1-2, prioritaires) — on revérifie donc
+    le quadrant après réattribution, en plus de l'absence de chevauchement
+    (règle 3), et on ne retient que l'arrangement qui minimise le nombre de
+    croisements du quadrant parmi tous ceux qui respectent ces 2 règles."""
+    quadrants = {}
+    for idx, nx, ny, _, _, above, _ in points:
+        quadrants.setdefault((above, nx >= cx), []).append(idx)
+    point_of = {p[0]: (p[1], p[2]) for p in points}
+    width_of = {p[0]: p[6] for p in points}
+
+    for idxs in quadrants.values():
+        n = len(idxs)
+        if n < 2:
+            continue
+        if n <= EXHAUSTIVE_UNCROSS_LIMIT:
+            _uncross_exhaustive(idxs, point_of, width_of, cx, cy, ax, final_y)
+        else:
+            _uncross_greedy(idxs, point_of, width_of, cx, cy, ax, final_y)
+
+
+def _uncross_exhaustive(idxs, point_of, width_of, cx, cy, ax, final_y):
+    n = len(idxs)
+    slots = [(ax[idx], final_y[idx]) for idx in idxs]
+    identity = tuple(range(n))
+    best_perm = identity
+    best_count = _count_crossings(idxs, point_of, ax, final_y)
+    if best_count == 0:
+        return
+    for perm in permutations(range(n)):
+        if perm == identity:
+            continue
+        cand_ax = {idxs[i]: slots[perm[i]][0] for i in range(n)}
+        cand_ay = {idxs[i]: slots[perm[i]][1] for i in range(n)}
+        if not all(
+            _quadrant_ok(cand_ax[idx], cand_ay[idx], width_of[idx], *point_of[idx], cx, cy)
+            for idx in idxs
+        ):
+            continue
+        if _has_any_overlap(idxs, cand_ax, cand_ay, width_of):
+            continue
+        count = _count_crossings(idxs, point_of, cand_ax, cand_ay)
+        if count < best_count:
+            best_count, best_perm = count, perm
+            if best_count == 0:
+                break
+    if best_perm != identity:
+        for i, idx in enumerate(idxs):
+            ax[idx] = slots[best_perm[i]][0]
+            final_y[idx] = slots[best_perm[i]][1]
+
+
+def _uncross_greedy(idxs, point_of, width_of, cx, cy, ax, final_y):
+    for _ in range(MAX_UNCROSS_PASSES):
+        base = _count_crossings(idxs, point_of, ax, final_y)
+        if base == 0:
+            break
+        improved = False
+        for i in range(len(idxs)):
+            a = idxs[i]
+            for b in idxs[i + 1:]:
+                ax[a], ax[b] = ax[b], ax[a]
+                final_y[a], final_y[b] = final_y[b], final_y[a]
+                valid = (
+                    _quadrant_ok(ax[a], final_y[a], width_of[a], *point_of[a], cx, cy)
+                    and _quadrant_ok(ax[b], final_y[b], width_of[b], *point_of[b], cx, cy)
+                    and not _has_any_overlap(idxs, ax, final_y, width_of)
+                )
+                new_total = _count_crossings(idxs, point_of, ax, final_y)
+                if valid and new_total < base:
+                    base = new_total
+                    improved = True
+                else:
+                    ax[a], ax[b] = ax[b], ax[a]
+                    final_y[a], final_y[b] = final_y[b], final_y[a]
+        if not improved:
+            break
+
 
 def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, y_max, x_crosses, y_crosses):
     """Repositionne les étiquettes (boîtes rectangulaires centrées sur leur
@@ -360,10 +511,15 @@ def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, 
     cx = norm(x_crosses, x_min, x_max)
     cy = norm(y_crosses, y_min, y_max)
 
-    def clamp_box(value, crossing, is_positive_side, half_extent):
+    def clamp_box(value, crossing, is_positive_side, extent):
+        # extent : la largeur/hauteur ENTIÈRE de la boîte, pas sa moitié —
+        # l'alignement du texte par rapport à son point d'ancrage
+        # (c:dLblPos) n'étant pas connu avec certitude, on se protège du
+        # pire cas où la boîte s'étend entièrement d'un seul côté de
+        # l'ancre plutôt que de part et d'autre.
         if is_positive_side:
-            return max(value, crossing + QUADRANT_MARGIN + half_extent)
-        return min(value, crossing - QUADRANT_MARGIN - half_extent)
+            return max(value, crossing + QUADRANT_MARGIN + extent)
+        return min(value, crossing - QUADRANT_MARGIN - extent)
 
     points = []
     for idx in x_by_idx:
@@ -374,50 +530,71 @@ def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, 
         dx0, dy0 = _dlbl_layout_offset(dlbl_by_idx[idx])
         vy0 = -dy0  # repère "visuel" (haut = grand), voir note ci-dessus
         width = _label_width(dlbl_by_idx[idx])
-        ax = clamp_box(nx + dx0, cx, nx >= cx, width / 2)
+        ax = clamp_box(nx + dx0, cx, nx >= cx, width)
         points.append((idx, nx, ny, ax, vy0, ny >= cy, width))
     if not points:
         return
 
-    # Balayage séparé pour les étiquettes "au-dessus" et "en dessous" de la
-    # ligne de croisement horizontale : chaque groupe n'est comparé qu'à
-    # lui-même, et le sens du balayage pousse toujours À L'ÉCART de la
-    # ligne (jamais vers elle), ce qui garantit le respect du quadrant par
-    # construction plutôt que par un simple plafond a posteriori.
+    # Balayage séparé par quadrant (haut/bas x droite/gauche de cx/cy) :
+    # chaque groupe n'est comparé qu'à lui-même, dans l'ordre de la
+    # position d'origine (ny) de ses points. Verticalement, on pousse
+    # toujours À L'ÉCART de la ligne (jamais vers elle), ce qui garantit le
+    # respect du quadrant par construction. Horizontalement, on force en
+    # plus l'ordre des abscisses à suivre celui des ordonnées : 2 segments
+    # reliant des paires dont l'ordre est identique sur les DEUX axes ne
+    # peuvent pas se croiser, alors que ne préserver que l'ordre vertical
+    # ne suffit pas (un décalage horizontal hérité du modèle peut à lui
+    # seul inverser 2 traits de rappel).
     final_y = {}
+    ax_by_idx = {}
     for above in (True, False):
-        group = [p for p in points if p[5] == above]
-        if not group:
-            continue
-        direction = 1 if above else -1
-        # Trié par la position du POINT seule (ny), pas par sa position de
-        # départ décalée (ny+vy0) : c'est l'ordre des POINTS qui doit se
-        # retrouver à l'identique dans celui des étiquettes pour que les
-        # traits de rappel ne se croisent jamais (point 3 de la docstring).
-        group.sort(key=lambda p: direction * p[2])
-        placed = []
-        for idx, nx, ny, ax, vy0, _, width in group:
-            y = clamp_box(ny + vy0, cy, above, LABEL_HEIGHT / 2)
-            for other_x, other_y, other_width in placed:
-                if abs(ax - other_x) < (width + other_width) / 2 + OVERLAP_BUFFER:
-                    min_gap = LABEL_HEIGHT + OVERLAP_BUFFER
-                    y = max(y, other_y + min_gap) if direction > 0 else min(y, other_y - min_gap)
-            if placed:
-                # Ordre vertical identique à celui des points (voir
-                # docstring, point 3) : sans ça, une étiquette pourrait
-                # "doubler" une voisine avec laquelle elle ne chevauche pas
-                # (abscisses différentes), inversant l'ordre des traits de
-                # rappel et les faisant se croiser.
-                prev_y = placed[-1][1]
-                y = max(y, prev_y + ORDER_MARGIN) if direction > 0 else min(y, prev_y - ORDER_MARGIN)
-            placed.append((ax, y, width))
-            final_y[idx] = y
+        for right in (True, False):
+            group = [p for p in points if p[5] == above and (p[1] >= cx) == right]
+            if not group:
+                continue
+            dir_y = 1 if above else -1
+            dir_x = 1 if right else -1
+            # Trié par angle depuis le point de croisement (cx, cy), pas
+            # seulement par ny : ordonner les étiquettes selon un seul axe
+            # (comme avant) ne suffit pas à empêcher un croisement si les
+            # abscisses des points ne suivent pas elles-mêmes cet ordre —
+            # l'angle capture les 2 axes à la fois dans un seul critère.
+            group.sort(key=lambda p: math.atan2(dir_y * (p[2] - cy), dir_x * (p[1] - cx)))
+            placed = []
+            for idx, nx, ny, ax, vy0, _, width in group:
+                if placed:
+                    # Ordre horizontal identique à celui des points (avant
+                    # le calcul de l'anti-chevauchement, qui doit porter sur
+                    # la position ax définitive) : sans quoi l'ordre
+                    # vertical seul ne suffit pas à empêcher un croisement
+                    # (voir docstring, point 3).
+                    prev_ax = placed[-1][0]
+                    ax = max(ax, prev_ax) if dir_x > 0 else min(ax, prev_ax)
+                y = clamp_box(ny + vy0, cy, above, LABEL_HEIGHT)
+                for other_x, other_y, other_width in placed:
+                    # width/other_width et LABEL_HEIGHT sont des demi-étendues
+                    # (voir clamp_box) : la marge de non-chevauchement est
+                    # donc leur SOMME, pas leur moyenne.
+                    if abs(ax - other_x) < width + other_width + OVERLAP_BUFFER:
+                        min_gap = 2 * LABEL_HEIGHT + OVERLAP_BUFFER
+                        y = max(y, other_y + min_gap) if dir_y > 0 else min(y, other_y - min_gap)
+                if placed:
+                    # Ordre vertical identique à celui des points (voir
+                    # docstring, point 3).
+                    prev_y = placed[-1][1]
+                    y = max(y, prev_y + ORDER_MARGIN) if dir_y > 0 else min(y, prev_y - ORDER_MARGIN)
+                placed.append((ax, y, width))
+                final_y[idx] = y
+                ax_by_idx[idx] = ax
+
+    _resolve_leader_crossings(points, cx, cy, ax_by_idx, final_y)
 
     for idx, nx, ny, ax, vy0, above, width in points:
         dlbl = dlbl_by_idx[idx]
+        final_ax = ax_by_idx[idx]
         # -(...) : reconversion du repère "visuel" vers celui, inversé, du
         # c:manualLayout XML (voir note en tête de fonction).
-        _set_dlbl_layout_offset(dlbl, ax - nx, -(final_y[idx] - ny))
+        _set_dlbl_layout_offset(dlbl, final_ax - nx, -(final_y[idx] - ny))
 
 
 def apply_importance_mappings(prs, participant, edition_id, all_tests=None):
