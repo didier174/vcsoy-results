@@ -247,22 +247,27 @@ def _set_axis_range(axis_el, data_min, data_max, crosses_at):
         crosses_el.set("val", repr(crosses_at))
 
 
-# Ellipse de collision (position normalisée 0-1 sur chaque axe) en dessous
-# de laquelle 2 étiquettes sont jugées trop proches pour cohabiter sans se
-# chevaucher. Rayon vertical fixe (texte sur 1-2 lignes) ; rayon horizontal
-# adapté à la longueur du texte de chaque étiquette (voir _label_reach_x) —
-# les intitulés des critères vont de 6 à 44 caractères, une largeur fixe
-# sous-estimait largement le besoin d'écart des plus longs.
-COLLISION_SEP_Y = 0.075
+# Modèle géométrique (unités normalisées 0-1) d'une zone de texte : une
+# boîte centrée sur son point d'ancrage (position du point + décalage),
+# largeur estimée à partir du nombre de caractères réel de l'étiquette
+# (6 à 44 caractères selon les critères — une largeur fixe sous-estimait
+# largement le besoin des plus longues), hauteur fixe (texte sur 1 ligne).
+LABEL_HEIGHT = 0.06
 LABEL_CHAR_WIDTH = 0.006
 LABEL_MARKER_WIDTH = 0.04
+# Marge visible entre 2 boîtes de texte (en plus de leur non-chevauchement
+# strict) et pas minimal forcé entre étiquettes consécutives d'un même
+# groupe (pour garantir un ordre vertical identique à celui des points,
+# condition nécessaire pour que les traits de rappel ne se croisent pas).
+OVERLAP_BUFFER = 0.015
+ORDER_MARGIN = 0.003
 
 
 def _label_text(dlbl):
     return "".join(t.text or "" for t in dlbl.iter(qn("a:t")))
 
 
-def _label_reach_x(dlbl):
+def _label_width(dlbl):
     return LABEL_MARKER_WIDTH + LABEL_CHAR_WIDTH * len(_label_text(dlbl))
 
 
@@ -306,18 +311,26 @@ QUADRANT_MARGIN = 0.04
 
 
 def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, y_max, x_crosses, y_crosses):
-    """Écarte les étiquettes dont la position finale (point + décalage déjà
-    réglé dans le modèle) finit trop près d'une autre — 2 points éloignés
-    dont les étiquettes ont été orientées l'une vers l'autre peuvent se
-    chevaucher tout autant que 2 points proches — TOUT EN garantissant que
-    chaque étiquette reste dans le même quadrant que son point (de part et
-    d'autre des lignes de croisement des axes, x_crosses/y_crosses) :
-    confirmé indispensable pour la lecture du mapping.
+    """Repositionne les étiquettes (boîtes rectangulaires centrées sur leur
+    point d'ancrage, voir LABEL_HEIGHT/_label_width) pour satisfaire, dans
+    l'ordre de priorité suivant — confirmé indispensable pour la lecture du
+    mapping :
+    1. la boîte ENTIÈRE (pas seulement son point de départ) reste du même
+       côté des lignes de croisement des axes (x_crosses/y_crosses) que son
+       point de données — même quadrant, de bout en bout ;
+    2. aucune boîte ne chevauche une autre (test rectangle strict, avec une
+       marge visible) ;
+    3. l'ordre vertical des étiquettes reste identique à celui de leurs
+       points (au sein d'un même demi-plan haut/bas) : les traits de rappel
+       ne peuvent alors pas se croiser entre eux, puisque 2 segments reliant
+       des paires ordonnées de la même façon aux deux extrémités ne se
+       croisent jamais.
 
     Le décalage horizontal déjà réglé dans le modèle est d'abord borné pour
-    rester du bon côté de la ligne verticale. Verticalement, les étiquettes
-    "au-dessus" et "en dessous" de la ligne horizontale sont balayées
-    séparément (chaque groupe comparé uniquement à lui-même), en poussant
+    que la boîte entière reste du bon côté de la ligne verticale.
+    Verticalement, les étiquettes "au-dessus" et "en dessous" de la ligne
+    horizontale sont balayées séparément (chaque groupe comparé uniquement
+    à lui-même, dans l'ordre de leur position d'origine), en poussant
     toujours À L'ÉCART de la ligne plutôt que vers elle : le quadrant est
     donc respecté par construction, jamais par un plafond appliqué après
     coup qui laisserait des étiquettes se coincer près de la ligne.
@@ -347,10 +360,10 @@ def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, 
     cx = norm(x_crosses, x_min, x_max)
     cy = norm(y_crosses, y_min, y_max)
 
-    def clamp_to_quadrant(value, crossing, is_above):
-        if is_above:
-            return max(value, crossing + QUADRANT_MARGIN)
-        return min(value, crossing - QUADRANT_MARGIN)
+    def clamp_box(value, crossing, is_positive_side, half_extent):
+        if is_positive_side:
+            return max(value, crossing + QUADRANT_MARGIN + half_extent)
+        return min(value, crossing - QUADRANT_MARGIN - half_extent)
 
     points = []
     for idx in x_by_idx:
@@ -360,9 +373,9 @@ def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, 
         ny = norm(y_by_idx[idx], y_min, y_max)
         dx0, dy0 = _dlbl_layout_offset(dlbl_by_idx[idx])
         vy0 = -dy0  # repère "visuel" (haut = grand), voir note ci-dessus
-        ax = clamp_to_quadrant(nx + dx0, cx, nx >= cx)
-        reach = _label_reach_x(dlbl_by_idx[idx])
-        points.append((idx, nx, ny, ax, vy0, ny >= cy, reach))
+        width = _label_width(dlbl_by_idx[idx])
+        ax = clamp_box(nx + dx0, cx, nx >= cx, width / 2)
+        points.append((idx, nx, ny, ax, vy0, ny >= cy, width))
     if not points:
         return
 
@@ -377,20 +390,30 @@ def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, 
         if not group:
             continue
         direction = 1 if above else -1
-        group.sort(key=lambda p: direction * (p[2] + p[4]))
+        # Trié par la position du POINT seule (ny), pas par sa position de
+        # départ décalée (ny+vy0) : c'est l'ordre des POINTS qui doit se
+        # retrouver à l'identique dans celui des étiquettes pour que les
+        # traits de rappel ne se croisent jamais (point 3 de la docstring).
+        group.sort(key=lambda p: direction * p[2])
         placed = []
-        for idx, nx, ny, ax, vy0, _, reach in group:
-            y = clamp_to_quadrant(ny + vy0, cy, above)
-            for other_x, other_y, other_reach in placed:
-                sep_x = max(reach, other_reach)
-                ex = ax - other_x
-                if abs(ex) < sep_x:
-                    min_gap = COLLISION_SEP_Y * (1 - (ex / sep_x) ** 2) ** 0.5
+        for idx, nx, ny, ax, vy0, _, width in group:
+            y = clamp_box(ny + vy0, cy, above, LABEL_HEIGHT / 2)
+            for other_x, other_y, other_width in placed:
+                if abs(ax - other_x) < (width + other_width) / 2 + OVERLAP_BUFFER:
+                    min_gap = LABEL_HEIGHT + OVERLAP_BUFFER
                     y = max(y, other_y + min_gap) if direction > 0 else min(y, other_y - min_gap)
-            placed.append((ax, y, reach))
+            if placed:
+                # Ordre vertical identique à celui des points (voir
+                # docstring, point 3) : sans ça, une étiquette pourrait
+                # "doubler" une voisine avec laquelle elle ne chevauche pas
+                # (abscisses différentes), inversant l'ordre des traits de
+                # rappel et les faisant se croiser.
+                prev_y = placed[-1][1]
+                y = max(y, prev_y + ORDER_MARGIN) if direction > 0 else min(y, prev_y - ORDER_MARGIN)
+            placed.append((ax, y, width))
             final_y[idx] = y
 
-    for idx, nx, ny, ax, vy0, above, reach in points:
+    for idx, nx, ny, ax, vy0, above, width in points:
         dlbl = dlbl_by_idx[idx]
         # -(...) : reconversion du repère "visuel" vers celui, inversé, du
         # c:manualLayout XML (voir note en tête de fonction).
