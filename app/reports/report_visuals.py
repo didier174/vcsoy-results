@@ -249,10 +249,21 @@ def _set_axis_range(axis_el, data_min, data_max, crosses_at):
 
 # Ellipse de collision (position normalisée 0-1 sur chaque axe) en dessous
 # de laquelle 2 étiquettes sont jugées trop proches pour cohabiter sans se
-# chevaucher : rayon horizontal plus grand que le vertical, le texte d'une
-# étiquette étant large mais bas (1-2 lignes).
-COLLISION_SEP_X = 0.16
+# chevaucher. Rayon vertical fixe (texte sur 1-2 lignes) ; rayon horizontal
+# adapté à la longueur du texte de chaque étiquette (voir _label_reach_x) —
+# les intitulés des critères vont de 6 à 44 caractères, une largeur fixe
+# sous-estimait largement le besoin d'écart des plus longs.
 COLLISION_SEP_Y = 0.075
+LABEL_CHAR_WIDTH = 0.006
+LABEL_MARKER_WIDTH = 0.04
+
+
+def _label_text(dlbl):
+    return "".join(t.text or "" for t in dlbl.iter(qn("a:t")))
+
+
+def _label_reach_x(dlbl):
+    return LABEL_MARKER_WIDTH + LABEL_CHAR_WIDTH * len(_label_text(dlbl))
 
 
 def _dlbl_layout_offset(dlbl):
@@ -287,8 +298,11 @@ def _set_dlbl_layout_offset(dlbl, dx, dy):
 
 # Marge (mêmes unités normalisées 0-1) gardée entre une étiquette et la
 # ligne de croisement des axes, pour qu'elle reste nettement à l'intérieur
-# de son quadrant plutôt que juste effleurer la limite.
-QUADRANT_MARGIN = 0.02
+# de son quadrant plutôt que juste effleurer la limite. Sert aussi de garde
+# minimale entre 2 étiquettes de part et d'autre de la ligne (2x cette
+# marge), le cas le plus difficile puisqu'on ne peut pas les rapprocher
+# davantage sans changer l'une d'elles de quadrant.
+QUADRANT_MARGIN = 0.04
 
 
 def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, y_max, x_crosses, y_crosses):
@@ -347,7 +361,8 @@ def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, 
         dx0, dy0 = _dlbl_layout_offset(dlbl_by_idx[idx])
         vy0 = -dy0  # repère "visuel" (haut = grand), voir note ci-dessus
         ax = clamp_to_quadrant(nx + dx0, cx, nx >= cx)
-        points.append((idx, nx, ny, ax, vy0, ny >= cy))
+        reach = _label_reach_x(dlbl_by_idx[idx])
+        points.append((idx, nx, ny, ax, vy0, ny >= cy, reach))
     if not points:
         return
 
@@ -364,17 +379,18 @@ def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, 
         direction = 1 if above else -1
         group.sort(key=lambda p: direction * (p[2] + p[4]))
         placed = []
-        for idx, nx, ny, ax, vy0, _ in group:
+        for idx, nx, ny, ax, vy0, _, reach in group:
             y = clamp_to_quadrant(ny + vy0, cy, above)
-            for other_x, other_y in placed:
+            for other_x, other_y, other_reach in placed:
+                sep_x = max(reach, other_reach)
                 ex = ax - other_x
-                if abs(ex) < COLLISION_SEP_X:
-                    min_gap = COLLISION_SEP_Y * (1 - (ex / COLLISION_SEP_X) ** 2) ** 0.5
+                if abs(ex) < sep_x:
+                    min_gap = COLLISION_SEP_Y * (1 - (ex / sep_x) ** 2) ** 0.5
                     y = max(y, other_y + min_gap) if direction > 0 else min(y, other_y - min_gap)
-            placed.append((ax, y))
+            placed.append((ax, y, reach))
             final_y[idx] = y
 
-    for idx, nx, ny, ax, vy0, above in points:
+    for idx, nx, ny, ax, vy0, above, reach in points:
         dlbl = dlbl_by_idx[idx]
         # -(...) : reconversion du repère "visuel" vers celui, inversé, du
         # c:manualLayout XML (voir note en tête de fonction).
