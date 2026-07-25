@@ -10,8 +10,6 @@ de JSON.
 import json
 import re
 
-import anthropic
-
 MODEL = "claude-sonnet-5"
 
 REQUIRED_KEYS = ("type", "contexte", "question", "reponse", "url_source")
@@ -148,6 +146,13 @@ def generate_scenarios(
     _run_generation) : peut prendre plusieurs minutes sans que cela ne bloque
     de requête web.
     """
+    # Import différé : le SDK anthropic à lui seul ajoute une vingtaine de
+    # Mo à la mémoire du worker s'il est importé au niveau du module (donc
+    # pour TOUTE requête, y compris celles qui n'en ont pas besoin, comme la
+    # génération de rapports d'étude) — un coût significatif sur le plan
+    # Render gratuit, à mémoire limitée.
+    import anthropic
+
     prompt = _build_prompt(participant_name, website_url, problematiques_text, examples, num_to_generate, language)
     user_message = {"role": "user", "content": prompt}
     usage = _new_usage_totals()
