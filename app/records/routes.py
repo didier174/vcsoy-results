@@ -55,8 +55,12 @@ def _render_report(**kwargs):
 def upload_page():
     edition_id = get_current_edition_id()
     edition = get_edition(edition_id)
+    # defer(file_data) : cette page n'affiche que le nom/la date de chaque
+    # record (fichier audio/PDF, potentiellement plusieurs Mo chacun),
+    # jamais son contenu — sans ça, charger la liste de TOUS les records
+    # de l'édition charge aussi tout leur contenu binaire en mémoire.
     records = (
-        TestRecord.query.join(TestResult)
+        TestRecord.query.options(db.defer(TestRecord.file_data)).join(TestResult)
         .filter(TestResult.edition_id == edition_id)
         .order_by(TestRecord.uploaded_at.desc())
         .all()
@@ -153,7 +157,7 @@ def delete_records():
         return redirect(url_for("records.upload_page"))
 
     records = (
-        TestRecord.query.join(TestResult)
+        TestRecord.query.options(db.defer(TestRecord.file_data)).join(TestResult)
         .filter(TestRecord.id.in_(record_ids), TestResult.edition_id == edition_id)
         .all()
     )

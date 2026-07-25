@@ -99,10 +99,18 @@ def index():
 @login_required
 def generate_scenarios():
     edition_id = get_current_edition_id()
+    # defer(file_data) : cette page n'affiche que le nom/la date de chaque
+    # modèle/fichier (potentiellement plusieurs Mo chacun), jamais son
+    # contenu — sans ça, la liste complète de l'édition charge aussi tout
+    # leur contenu binaire en mémoire à chaque affichage de cette page.
     templates = (
-        ScenarioTemplate.query.filter_by(edition_id=edition_id).order_by(ScenarioTemplate.uploaded_at.desc()).all()
+        ScenarioTemplate.query.options(db.defer(ScenarioTemplate.file_data))
+        .filter_by(edition_id=edition_id).order_by(ScenarioTemplate.uploaded_at.desc()).all()
     )
-    files = ScenarioFile.query.filter_by(edition_id=edition_id).order_by(ScenarioFile.updated_at.desc()).all()
+    files = (
+        ScenarioFile.query.options(db.defer(ScenarioFile.file_data))
+        .filter_by(edition_id=edition_id).order_by(ScenarioFile.updated_at.desc()).all()
+    )
     participants = Participant.query.filter_by(edition_id=edition_id).order_by(Participant.participant_name).all()
     book_templates = [t for t in templates if t.kind == ScenarioTemplate.KIND_BOOK]
     problematiques_templates = [t for t in templates if t.kind == ScenarioTemplate.KIND_PROBLEMATIQUES]
@@ -175,7 +183,7 @@ def delete_templates():
         flash("Merci de choisir au moins un modèle à supprimer.", "error")
         return redirect(url_for("scenarios.generate_scenarios"))
 
-    to_delete = ScenarioTemplate.query.filter(
+    to_delete = ScenarioTemplate.query.options(db.defer(ScenarioTemplate.file_data)).filter(
         ScenarioTemplate.edition_id == edition_id, ScenarioTemplate.id.in_(selected_ids)
     ).all()
     deleted = len(to_delete)
@@ -504,7 +512,7 @@ def delete_scenario_files():
         flash("Merci de choisir au moins un fichier à supprimer.", "error")
         return redirect(url_for("scenarios.generate_scenarios"))
 
-    to_delete = ScenarioFile.query.filter(
+    to_delete = ScenarioFile.query.options(db.defer(ScenarioFile.file_data)).filter(
         ScenarioFile.edition_id == edition_id, ScenarioFile.id.in_(selected_ids)
     ).all()
     deleted = len(to_delete)
@@ -527,16 +535,23 @@ def generate_tests():
     edition_id = get_current_edition_id()
     edition = get_edition(edition_id)
 
+    # defer(file_data) : ces pages n'affichent que le nom/la date de chaque
+    # modèle/fichier, jamais son contenu.
     test_templates = (
-        TestTemplate.query.filter_by(edition_id=edition_id).order_by(TestTemplate.uploaded_at.desc()).all()
+        TestTemplate.query.options(db.defer(TestTemplate.file_data))
+        .filter_by(edition_id=edition_id).order_by(TestTemplate.uploaded_at.desc()).all()
     )
-    test_files = TestFile.query.filter_by(edition_id=edition_id).order_by(TestFile.updated_at.desc()).all()
+    test_files = (
+        TestFile.query.options(db.defer(TestFile.file_data))
+        .filter_by(edition_id=edition_id).order_by(TestFile.updated_at.desc()).all()
+    )
 
     # Seuls les participants ayant déjà un Book scénario peuvent avoir un
     # fichier test généré (voir create_test_file) : on ne propose que ceux-là.
     book_participant_ids = {
         f.participant_id
-        for f in ScenarioFile.query.filter_by(edition_id=edition_id, kind=ScenarioTemplate.KIND_BOOK).all()
+        for f in ScenarioFile.query.options(db.defer(ScenarioFile.file_data))
+        .filter_by(edition_id=edition_id, kind=ScenarioTemplate.KIND_BOOK).all()
         if f.participant_id
     }
     participants = [
@@ -596,7 +611,7 @@ def delete_test_templates():
         flash("Merci de choisir au moins un modèle à supprimer.", "error")
         return redirect(url_for("scenarios.generate_tests"))
 
-    to_delete = TestTemplate.query.filter(
+    to_delete = TestTemplate.query.options(db.defer(TestTemplate.file_data)).filter(
         TestTemplate.edition_id == edition_id, TestTemplate.id.in_(selected_ids)
     ).all()
     deleted = len(to_delete)
@@ -737,7 +752,9 @@ def delete_test_files():
         flash("Merci de choisir au moins un fichier à supprimer.", "error")
         return redirect(url_for("scenarios.generate_tests"))
 
-    to_delete = TestFile.query.filter(TestFile.edition_id == edition_id, TestFile.id.in_(selected_ids)).all()
+    to_delete = TestFile.query.options(db.defer(TestFile.file_data)).filter(
+        TestFile.edition_id == edition_id, TestFile.id.in_(selected_ids)
+    ).all()
     deleted = len(to_delete)
     names = ", ".join(f.name for f in to_delete)
     for f in to_delete:
