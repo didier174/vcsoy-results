@@ -61,8 +61,21 @@ def _log(action, details=""):
 @login_required
 def list_reports():
     edition_id = get_current_edition_id()
-    reports = StudyReport.query.filter_by(edition_id=edition_id).order_by(StudyReport.created_at.desc()).all()
-    templates = ReportTemplate.query.filter_by(edition_id=edition_id).order_by(ReportTemplate.uploaded_at.desc()).all()
+    # defer(file_data) : cette page n'affiche que le nom/la date de chaque
+    # rapport/modèle, jamais son contenu — sans ça, SQLAlchemy charge en
+    # mémoire le contenu binaire COMPLET (plusieurs Mo par rapport) de TOUS
+    # les rapports déjà générés de l'édition à chaque affichage de cette
+    # liste, y compris juste après chaque nouvelle génération (redirection
+    # vers cette page) : une source de pression mémoire qui s'aggrave à
+    # mesure que des rapports s'accumulent au fil d'une même session.
+    reports = (
+        StudyReport.query.options(db.defer(StudyReport.file_data))
+        .filter_by(edition_id=edition_id).order_by(StudyReport.created_at.desc()).all()
+    )
+    templates = (
+        ReportTemplate.query.options(db.defer(ReportTemplate.file_data))
+        .filter_by(edition_id=edition_id).order_by(ReportTemplate.uploaded_at.desc()).all()
+    )
     participants = Participant.query.filter_by(edition_id=edition_id).order_by(Participant.participant_name).all()
     edition = get_edition(edition_id)
     return render_template(
@@ -105,7 +118,7 @@ def delete_templates():
         flash("Merci de choisir au moins un modèle à supprimer.", "error")
         return redirect(url_for("reports.list_reports"))
 
-    to_delete = ReportTemplate.query.filter(
+    to_delete = ReportTemplate.query.options(db.defer(ReportTemplate.file_data)).filter(
         ReportTemplate.edition_id == edition_id, ReportTemplate.id.in_(selected_ids)
     ).all()
     deleted = len(to_delete)
@@ -266,7 +279,7 @@ def delete_reports():
         flash("Merci de choisir au moins un rapport à supprimer.", "error")
         return redirect(url_for("reports.list_reports"))
 
-    to_delete = StudyReport.query.filter(
+    to_delete = StudyReport.query.options(db.defer(StudyReport.file_data)).filter(
         StudyReport.edition_id == edition_id, StudyReport.id.in_(selected_ids)
     ).all()
     deleted = len(to_delete)
