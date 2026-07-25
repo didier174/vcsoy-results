@@ -27,12 +27,10 @@ from itertools import permutations
 from lxml import etree
 from pptx.oxml.ns import qn
 
-from app.models import Participant, TestResult
+from app.models import TestResult
 from app.results.presentation import CHANNEL_ORDER
 from app.results.scoring import (
     build_compilation_rows,
-    compute_test_score,
-    compute_importance,
     compute_criterion_stats,
 )
 
@@ -77,17 +75,17 @@ def _clone_untested_label(template_shape, target_top, new_id):
     return new_el
 
 
-def apply_gauge_chart(prs, participant, edition_id, rows=None):
+def apply_gauge_chart(prs, participant, edition_id, participant_tests=None):
     slide = prs.slides[8]  # diapositive 9
     chart_shape = next((s for s in slide.shapes if s.name == "Graph_Bar"), None)
     if chart_shape is None or not chart_shape.has_chart:
         return
 
-    if rows is None:
-        all_participants = Participant.query.filter_by(edition_id=edition_id).all()
-        all_tests = TestResult.query.filter_by(edition_id=edition_id).all()
-        rows = build_compilation_rows(all_participants, all_tests)
-    own_row = next((r for r in rows if r["participant_id"] == participant.id), None)
+    # La note consolidée et les notes par canal du participant ne dépendent
+    # QUE de ses propres tests : pas besoin des données de toute l'édition.
+    if participant_tests is None:
+        participant_tests = TestResult.query.filter_by(edition_id=edition_id, participant_id=participant.id).all()
+    own_row = build_compilation_rows([participant], participant_tests)[0]
 
     channel_flags = {
         "phone": participant.channel_phone, "mail": participant.channel_mail,
@@ -192,17 +190,6 @@ MAPPING_POINT_CODE = {
 # valeurs de l'AUTRE axe — ce qui place la ligne de croisement au milieu du
 # nuage de points plutôt qu'à une valeur arbitraire comme 0.
 MAPPING_AXIS_PADDING = 0.3
-
-
-def _channel_tests_with_note(channel, all_tests):
-    result = []
-    for t in all_tests:
-        if t.channel != channel:
-            continue
-        score = compute_test_score(channel, t.raw_data or {})
-        if score is not None:
-            result.append((t.raw_data or {}, score["note_20"]))
-    return result
 
 
 def _criterion_pct_vous(channel, code, vous_tests):
@@ -597,11 +584,15 @@ def _spread_overlapping_labels(ser_el, x_by_idx, y_by_idx, x_min, x_max, y_min, 
         _set_dlbl_layout_offset(dlbl, final_ax - nx, -(final_y[idx] - ny))
 
 
-def apply_importance_mappings(prs, participant, edition_id, all_tests=None):
-    if all_tests is None:
-        all_tests = TestResult.query.filter_by(edition_id=edition_id).all()
+def apply_importance_mappings(prs, participant, edition_id, cache, participant_tests=None):
+    """cache["importance"][channel][str(code)] : coefficient de Pearson au
+    carré, précalculé une fois pour toute l'édition (voir report_cache.py)
+    — évite de recharger/rescanner tous les tests de l'édition à chaque
+    génération de rapport."""
+    if participant_tests is None:
+        participant_tests = TestResult.query.filter_by(edition_id=edition_id, participant_id=participant.id).all()
     vous_tests_by_channel = {
-        channel: [t for t in all_tests if t.participant_id == participant.id and t.channel == channel]
+        channel: [t for t in participant_tests if t.channel == channel]
         for channel in CHANNEL_ORDER
     }
 
@@ -615,24 +606,20 @@ def apply_importance_mappings(prs, participant, edition_id, all_tests=None):
         if chart_shape is None:
             continue
 
-        tests_with_note = _channel_tests_with_note(channel, all_tests)
         point_codes = MAPPING_POINT_CODE[channel]
 
         # Importance = coefficient de Pearson au carré (toujours positif,
         # reflète l'intensité de la liaison indépendamment du sens), normalisé
         # pour que la somme sur tous les critères du canal fasse 1 — même
         # échelle que les valeurs d'exemple du modèle d'origine.
-        raw_importance = {}
-        for code in point_codes.values():
-            r = compute_importance(channel, code, tests_with_note)
-            raw_importance[code] = (r ** 2) if r is not None else 0.0
-        total = sum(raw_importance.values())
+        raw_importance = cache["importance"][channel]
+        total = sum(raw_importance[str(code)] for code in point_codes.values())
 
         x_by_idx, y_by_idx = {}, {}
         vous_tests = vous_tests_by_channel[channel]
         for idx, code in point_codes.items():
             x_by_idx[idx] = _criterion_pct_vous(channel, code, vous_tests)
-            y_by_idx[idx] = (raw_importance[code] / total) if total else 0.0
+            y_by_idx[idx] = (raw_importance[str(code)] / total) if total else 0.0
 
         chart_xml = chart_shape.chart._chartSpace
         ser_el = chart_xml.find(f".//{qn('c:ser')}")
@@ -667,13 +654,14 @@ def apply_importance_mappings(prs, participant, edition_id, all_tests=None):
             )
 
 
-def apply_report_visuals(prs, participant, edition_id, all_tests=None, rows=None):
+def apply_report_visuals(prs, participant, edition_id, cache, participant_tests=None):
     """Point d'entrée unique : applique la jauge (diapo 9) et les 5
     mappings d'importance (diapos 14/18/22/26/30) sur une Presentation déjà
     ouverte (après substitution des balises texte).
 
-    all_tests/rows : déjà calculés par l'appelant (voir reports/routes.py)
-    pour éviter de refaire ces requêtes/calculs coûteux (tous les tests de
-    l'édition) plusieurs fois dans la même requête HTTP."""
-    apply_gauge_chart(prs, participant, edition_id, rows=rows)
-    apply_importance_mappings(prs, participant, edition_id, all_tests=all_tests)
+    cache : agrégats d'édition précalculés (voir report_cache.py).
+    participant_tests : les tests du SEUL participant courant, déjà
+    calculés par l'appelant (voir reports/routes.py) pour éviter une
+    requête redondante."""
+    apply_gauge_chart(prs, participant, edition_id, participant_tests=participant_tests)
+    apply_importance_mappings(prs, participant, edition_id, cache, participant_tests=participant_tests)

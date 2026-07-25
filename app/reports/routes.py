@@ -23,9 +23,9 @@ from app.models import StudyReport, ReportTemplate, Participant, TestResult, Act
 from app.editions import get_current_edition_id, get_edition
 from app.menu import MENU_ITEMS
 from app.reports.generator import substitute_tags
+from app.reports.report_cache import get_fresh_edition_cache
 from app.reports.report_data import build_participant_placeholders
 from app.reports.report_visuals import apply_report_visuals
-from app.results.scoring import build_compilation_rows, build_category_winners
 
 reports_bp = Blueprint("reports", __name__, url_prefix="/reports")
 
@@ -143,27 +143,28 @@ def create_report():
         return redirect(url_for("reports.list_reports"))
 
     # Le rapport compare systématiquement chaque participant aux lauréats de
-    # l'édition (note globale, notes par canal, accessibilité...) : sans
-    # aucun lauréat calculable, la quasi-totalité du rapport serait vide ou
-    # trompeuse. On le signale clairement plutôt que de laisser échouer la
-    # génération avec une liste de balises non reconnues.
-    all_participants = Participant.query.filter_by(edition_id=edition_id).all()
-    all_tests = TestResult.query.filter_by(edition_id=edition_id).all()
-    rows = build_compilation_rows(all_participants, all_tests)
-    if not build_category_winners(rows):
+    # l'édition (note globale, notes par canal, accessibilité...), via un
+    # cache d'agrégats précalculé quand l'utilisateur lance « Liste des
+    # lauréats » (voir report_cache.py) — indispensable pour ne pas recharger
+    # et retraiter tous les tests de l'édition à chaque rapport, seule source
+    # du dépassement mémoire observé sur Render en enchaînant les rapports.
+    cache = get_fresh_edition_cache(edition_id)
+    if cache is None or not cache["has_winners"]:
         flash(
             "Aucun lauréat n'a pu être déterminé pour cette édition (aucun "
             "résultat chargé, ou aucun participant n'atteint 11,5/20 et le "
-            "1er rang de sa catégorie). Le rapport d'étude ne peut pas être "
-            "généré : chargez les fichiers de résultats de toute l'édition, "
-            "vérifiez « Liste des lauréats », puis réessayez.",
+            "1er rang de sa catégorie), ou les résultats ont changé depuis "
+            "le dernier calcul. Le rapport d'étude ne peut pas être généré : "
+            "chargez les fichiers de résultats de toute l'édition, vérifiez "
+            "« Liste des lauréats », puis réessayez.",
             "error",
         )
         return redirect(url_for("reports.list_reports"))
 
-    values = build_participant_placeholders(
-        participant, edition_id, all_participants=all_participants, all_tests=all_tests, rows=rows
-    )
+    # Seuls les tests de CE participant sont chargés ici (pas ceux de toute
+    # l'édition) : le reste vient du cache ci-dessus.
+    participant_tests = TestResult.query.filter_by(edition_id=edition_id, participant_id=participant.id).all()
+    values = build_participant_placeholders(participant, edition_id, cache, all_tests=participant_tests)
 
     # Un seul parsing du modèle (.pptx de plusieurs Mo) pour les balises
     # texte ET les graphiques natifs : le reparser une seconde fois (comme
@@ -182,15 +183,13 @@ def create_report():
 
     # Graphiques natifs (jauge diapo 9, mapping d'importance diapos
     # 14/18/22/26/30) : pas de simples balises texte, on les met à jour
-    # directement sur la présentation déjà générée. On réutilise all_tests/rows
-    # déjà calculés ci-dessus (tous les tests de l'édition) pour ne pas
-    # retriper/recalculer la même chose 3 fois dans la même requête.
-    # Best-effort : si un modèle ne correspond pas exactement à la structure
-    # attendue (nom de forme, type de graphique...), on préfère livrer le
-    # rapport avec les balises texte déjà remplies plutôt que de faire
-    # échouer toute la génération.
+    # directement sur la présentation déjà générée. Best-effort : si un
+    # modèle ne correspond pas exactement à la structure attendue (nom de
+    # forme, type de graphique...), on préfère livrer le rapport avec les
+    # balises texte déjà remplies plutôt que de faire échouer toute la
+    # génération.
     try:
-        apply_report_visuals(prs, participant, edition_id, all_tests=all_tests, rows=rows)
+        apply_report_visuals(prs, participant, edition_id, cache, participant_tests=participant_tests)
     except Exception:
         current_app.logger.exception("Échec de la mise à jour des graphiques natifs du rapport d'étude")
 

@@ -26,6 +26,7 @@ from app.access_control import admin_required
 from app.results.validation import validate_workbook, EXPECTED_SHEETS
 from app.results.presentation import build_test_view, CHANNEL_LABELS, CHANNEL_ORDER
 from app.results.scoring import build_compilation_rows, build_category_winners
+from app.reports.report_cache import refresh_edition_cache
 
 results_bp = Blueprint("results", __name__, url_prefix="/results")
 
@@ -271,6 +272,12 @@ def winners_page():
     tests = TestResult.query.filter_by(edition_id=edition_id).all()
     rows = build_compilation_rows(participants, tests)
     winners_list = build_category_winners(rows)
+
+    # Rafraîchit aussi le cache d'agrégats utilisé par la génération des
+    # rapports d'étude (voir reports/report_cache.py) : évite de tout
+    # recharger/retraiter à chaque rapport, seule source du dépassement
+    # mémoire sur Render observé avec plusieurs rapports enchaînés.
+    refresh_edition_cache(edition_id, user_id=current_user.id)
 
     edition = get_edition(edition_id)
     return render_template(

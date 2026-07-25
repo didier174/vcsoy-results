@@ -313,6 +313,39 @@ class ReportTemplate(db.Model):
     uploaded_by = db.relationship("User")
 
 
+class EditionReportCache(db.Model):
+    """
+    Cache des agrégats d'édition (notes/pourcentages tous/catégorie/
+    lauréats/non-lauréats, importance des critères) utilisés par la
+    génération des rapports d'étude — voir app/reports/report_cache.py.
+
+    Sans ce cache, chaque génération de rapport recalculait ces agrégats
+    à partir de TOUS les tests de l'édition, ce qui faisait dépasser la
+    mémoire disponible sur le plan Render dès que l'édition grossissait
+    (et enchaîner plusieurs rapports aggravait encore les choses). Le
+    cache n'est recalculé qu'à la demande, quand l'utilisateur relance
+    « Liste des lauréats » — geste déjà obligatoire avant de générer des
+    rapports d'étude.
+
+    `results_signature` permet de détecter que les résultats ont changé
+    depuis ce calcul (fichier rechargé/supprimé) sans avoir à comparer
+    les données elles-mêmes : nombre de tests de l'édition + date du plus
+    récent chargement. Si elle ne correspond plus à l'état actuel des
+    résultats, le cache est considéré périmé et doit être recalculé.
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    edition_id = db.Column(db.String(20), nullable=False, unique=True, index=True)
+
+    results_signature = db.Column(db.String(64), nullable=False)
+    data = db.Column(db.JSON, nullable=False)
+
+    computed_at = db.Column(db.DateTime, default=datetime.utcnow)
+    computed_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+
+    computed_by = db.relationship("User")
+
+
 class StudyReport(db.Model):
     """
     Un rapport d'étude généré pour un participant, à partir d'un modèle
