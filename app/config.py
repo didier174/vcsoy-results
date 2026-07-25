@@ -35,6 +35,16 @@ class Config:
         SQLALCHEMY_DATABASE_URI = SQLALCHEMY_DATABASE_URI.replace("postgres://", "postgresql://", 1)
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
+    # pool_pre_ping : teste chaque connexion (requête minimale) avant de la
+    # réutiliser, et la remplace silencieusement si elle est morte. Sans ça,
+    # une connexion fermée côté serveur (Postgres géré par Render, qui coupe
+    # les connexions inactives) fait planter la première requête suivante
+    # avec une erreur SSL ("decryption failed or bad record mac") au lieu de
+    # simplement en ouvrir une nouvelle. pool_recycle : ferme et remplace
+    # une connexion avant qu'elle n'atteigne cet âge, par précaution
+    # supplémentaire (marge sous les délais d'inactivité habituels).
+    SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True, "pool_recycle": 280}
+
     GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
     GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
 

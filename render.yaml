@@ -9,15 +9,18 @@ services:
     # rapports PPTX). La génération de scénarios par IA tourne en
     # arrière-plan (voir app/scenarios/routes.py, _run_generation) et ne
     # dépend donc plus de ce timeout, aussi longue soit-elle.
-    # --max-requests 3 --max-requests-jitter 1 : sur le plan gratuit (peu de
-    # mémoire), un worker gunicorn qui enchaîne plusieurs générations de
+    # --max-requests 15 --max-requests-jitter 5 : sur le plan gratuit (peu
+    # de mémoire), un worker gunicorn qui enchaîne plusieurs générations de
     # rapports d'étude (modèle .pptx volumineux, ~44 diapositives) peut ne
-    # jamais rendre à l'OS la mémoire momentanément utilisée — observé en
-    # pratique dès le 3e rapport. On force donc un redémarrage très
-    # fréquent du worker (mémoire remise à zéro), sans jamais couper une
-    # requête en cours : le coût (redémarrage plus fréquent) est minime
-    # comparé au risque de plantage mémoire.
-    startCommand: "gunicorn wsgi:app --timeout 120 --max-requests 3 --max-requests-jitter 1"
+    # jamais rendre à l'OS la mémoire momentanément utilisée. On force donc
+    # un redémarrage périodique du worker (mémoire remise à zéro), sans
+    # jamais couper une requête en cours. Une valeur trop basse (3, essayée
+    # un temps) recycle le worker si souvent qu'elle peut faire coïncider
+    # une requête avec la fenêtre de redémarrage — cause probable d'une
+    # erreur de connexion SSL à la base observée avec cette valeur ; 15 est
+    # un compromis plus sûr, combiné à pool_pre_ping (voir config.py) qui
+    # remplace de toute façon une connexion morte au lieu de planter dessus.
+    startCommand: "gunicorn wsgi:app --timeout 120 --max-requests 15 --max-requests-jitter 5"
     envVars:
       - key: SECRET_KEY
         generateValue: true
