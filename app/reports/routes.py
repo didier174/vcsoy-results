@@ -25,7 +25,7 @@ from app.menu import MENU_ITEMS
 from app.reports.generator import substitute_tags
 from app.reports.report_cache import get_fresh_edition_cache
 from app.reports.report_data import build_participant_placeholders
-from app.reports.report_visuals import apply_report_visuals
+from app.reports.report_visuals import apply_report_visuals, capture_highlight_calibration
 
 reports_bp = Blueprint("reports", __name__, url_prefix="/reports")
 
@@ -183,6 +183,13 @@ def create_report():
     # texte ET les graphiques natifs : le reparser une seconde fois (comme
     # avant) doublait inutilement la mémoire utilisée par requête.
     prs = Presentation(io.BytesIO(template.file_data))
+
+    # Capturé AVANT substitution : les encarts forces/axes de progrès des
+    # diapos 6/7/8 ont besoin de la longueur du texte À BALISES du modèle
+    # pour se calibrer (voir capture_highlight_calibration) — cette
+    # information disparaît dès que substitute_tags remplace les balises.
+    highlight_calibration = capture_highlight_calibration(prs)
+
     unknown_tags = substitute_tags(prs, values)
 
     if unknown_tags:
@@ -202,7 +209,10 @@ def create_report():
     # balises texte déjà remplies plutôt que de faire échouer toute la
     # génération.
     try:
-        apply_report_visuals(prs, participant, edition_id, cache, participant_tests=participant_tests)
+        apply_report_visuals(
+            prs, participant, edition_id, cache,
+            participant_tests=participant_tests, highlight_calibration=highlight_calibration,
+        )
     except Exception:
         current_app.logger.exception("Échec de la mise à jour des graphiques natifs du rapport d'étude")
 

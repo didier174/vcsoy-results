@@ -654,14 +654,188 @@ def apply_importance_mappings(prs, participant, edition_id, cache, participant_t
             )
 
 
-def apply_report_visuals(prs, participant, edition_id, cache, participant_tests=None):
-    """Point d'entrée unique : applique la jauge (diapo 9) et les 5
-    mappings d'importance (diapos 14/18/22/26/30) sur une Presentation déjà
-    ouverte (après substitution des balises texte).
+# --------------------------- Diapositives 6/7/8 : encarts forces/axes de progrès
+
+# Sur ces 3 diapositives, chaque zone de texte "Enseignements et résultats"
+# contient, pour son canal, un paragraphe "forces" (encart vert) suivi d'un
+# paragraphe "axes de progrès" (encart rose), chacun mis en valeur par un
+# rectangle arrière-plan à coins arrondis + une petite icône calée sur son
+# coin haut-gauche. Ces 2 formes sont positionnées dans le MODÈLE pour la
+# longueur du texte À BALISES (ex. "{{QS phone pct tous}}"), bien plus long
+# que la valeur réelle qui la remplace ("87 %") : sans ajustement, l'encart
+# déborde largement sous le paragraphe une fois les balises substituées.
+#
+# green_para/pink_para : index (0-based) du paragraphe (dans la zone de
+# texte) mis en valeur par chaque encart — seule partie structurelle, fixée
+# par l'ordre des paragraphes du modèle, indépendante des réglages visuels.
+# La taille des encarts eux-mêmes n'est PAS codée en dur : voir
+# capture_highlight_calibration, qui la lit à chaque génération directement
+# dans le modèle (avant substitution des balises), pour ne jamais dépendre
+# d'une constante figée qui deviendrait fausse au moindre réglage manuel des
+# encarts dans PowerPoint.
+HIGHLIGHT_BOX_CONFIG = {
+    "phone": dict(
+        slide_idx=5, zonetexte="ZoneTexte 17",
+        green_rect="Rectangle\xa0: coins arrondis 15", green_icon="Graphique 11", green_para=5,
+        pink_rect="Rectangle\xa0: coins arrondis 16", pink_icon="Graphique 14", pink_para=8,
+    ),
+    "mail": dict(
+        slide_idx=6, zonetexte="ZoneTexte 4",
+        green_rect="Rectangle\xa0: coins arrondis 2", green_icon="Graphique 5", green_para=2,
+        pink_rect="Rectangle\xa0: coins arrondis 11", pink_icon="Graphique 10", pink_para=5,
+    ),
+    "web": dict(
+        slide_idx=6, zonetexte="ZoneTexte 17",
+        green_rect="Rectangle\xa0: coins arrondis 12", green_icon="Graphique 24", green_para=4,
+        pink_rect="Rectangle\xa0: coins arrondis 18", pink_icon="Graphique 16", pink_para=6,
+    ),
+    "chat": dict(
+        slide_idx=7, zonetexte="ZoneTexte 17",
+        green_rect="Rectangle\xa0: coins arrondis 7", green_icon="Graphique 8", green_para=3,
+        pink_rect="Rectangle\xa0: coins arrondis 3", pink_icon="Graphique 5", pink_para=6,
+    ),
+    "rs": dict(
+        slide_idx=7, zonetexte="ZoneTexte 15",
+        green_rect="Rectangle\xa0: coins arrondis 6", green_icon="Graphique 16", green_para=5,
+        pink_rect="Rectangle\xa0: coins arrondis 2", pink_icon="Graphique 4", pink_para=8,
+    ),
+}
+
+
+def _shape_by_name(slide, name):
+    return next((s for s in slide.shapes if s.name == name), None)
+
+
+def _highlight_paragraph_text(paragraph):
+    return "".join(run.text for run in paragraph.runs)
+
+
+def _solve_height_model(equations):
+    """Résout, au sens des moindres carrés, hauteur = beta·n + kappa·chars
+    (n = nb de paragraphes depuis le haut de la zone de texte, chars = nb de
+    caractères cumulés) à partir des équations (n, chars, hauteur_observée).
+    Système 2 inconnues sur-déterminé (4 équations : haut/bas de l'encart
+    vert, haut/bas de l'encart rose) via les équations normales — même
+    principe que la régression GAUGE_OVAL_X_SLOPE/INTERCEPT plus haut, mais
+    résolue à la volée sur le modèle courant plutôt que figée dans le code.
+    """
+    s_nn = s_nc = s_cc = s_nt = s_ct = 0.0
+    for n, c, t in equations:
+        s_nn += n * n
+        s_nc += n * c
+        s_cc += c * c
+        s_nt += n * t
+        s_ct += c * t
+    det = s_nn * s_cc - s_nc * s_nc
+    if abs(det) < 1e-6:
+        return None
+    beta = (s_nt * s_cc - s_ct * s_nc) / det
+    kappa = (s_nn * s_ct - s_nc * s_nt) / det
+    return beta, kappa
+
+
+def capture_highlight_calibration(prs):
+    """À appeler AVANT substitute_tags, pendant que les balises {{ ... }}
+    sont encore présentes dans le texte : mesure, pour chaque encart
+    forces/axes de progrès des diapositives 6/7/8, la relation entre le
+    nombre de caractères du texte à balises et la taille de son encart
+    TELLE QUE RÉGLÉE DANS LE MODÈLE, afin de reproduire la même proportion
+    une fois les balises remplacées par les valeurs réelles (bien plus
+    courtes). Voir apply_highlight_boxes."""
+    calibration = {}
+    for channel, config in HIGHLIGHT_BOX_CONFIG.items():
+        try:
+            slide = prs.slides[config["slide_idx"]]
+            zonetexte = _shape_by_name(slide, config["zonetexte"])
+            green_rect = _shape_by_name(slide, config["green_rect"])
+            pink_rect = _shape_by_name(slide, config["pink_rect"])
+            if zonetexte is None or not zonetexte.has_text_frame or green_rect is None or pink_rect is None:
+                continue
+            tf = zonetexte.text_frame
+            para_chars = [len(_highlight_paragraph_text(p)) for p in tf.paragraphs]
+            y0 = zonetexte.top + tf.margin_top
+
+            g, p = config["green_para"], config["pink_para"]
+            equations = [
+                (g, sum(para_chars[:g]), green_rect.top - y0),
+                (g + 1, sum(para_chars[:g + 1]), green_rect.top + green_rect.height - y0),
+                (p, sum(para_chars[:p]), pink_rect.top - y0),
+                (p + 1, sum(para_chars[:p + 1]), pink_rect.top + pink_rect.height - y0),
+            ]
+            solved = _solve_height_model(equations)
+            if solved is None:
+                continue
+            beta, kappa = solved
+            calibration[channel] = {"y0": y0, "beta": beta, "kappa": kappa}
+        except Exception:
+            continue
+    return calibration
+
+
+def _resize_highlight_box(slide, para_chars, para_idx, rect_name, icon_name, y0, beta, kappa):
+    rect = _shape_by_name(slide, rect_name)
+    if rect is None:
+        return
+    chars_before = sum(para_chars[:para_idx])
+    chars_through = sum(para_chars[:para_idx + 1])
+    top = round(y0 + para_idx * beta + chars_before * kappa)
+    bottom = round(y0 + (para_idx + 1) * beta + chars_through * kappa)
+    height = max(bottom - top, round(beta))
+
+    icon = _shape_by_name(slide, icon_name)
+    icon_offset = icon.top - rect.top if icon is not None else None
+
+    rect.top = top
+    rect.height = height
+    if icon is not None and icon_offset is not None:
+        icon.top = top + icon_offset
+
+
+def apply_highlight_boxes(prs, calibration):
+    """Diapositives 6/7/8 (une par canal texte) : redimensionne les encarts
+    forces (vert) / axes de progrès (rose) et repositionne leur icône pour
+    qu'ils couvrent exactement le paragraphe déjà substitué, à partir de la
+    calibration capturée AVANT substitution (voir capture_highlight_calibration).
+    Best-effort par canal : un canal dont les formes ne correspondent pas à
+    la structure attendue, ou sans calibration disponible, est ignoré."""
+    for channel, config in HIGHLIGHT_BOX_CONFIG.items():
+        calib = calibration.get(channel)
+        if calib is None:
+            continue
+        try:
+            slide = prs.slides[config["slide_idx"]]
+            zonetexte = _shape_by_name(slide, config["zonetexte"])
+            if zonetexte is None or not zonetexte.has_text_frame:
+                continue
+            para_chars = [len(_highlight_paragraph_text(p)) for p in zonetexte.text_frame.paragraphs]
+
+            _resize_highlight_box(
+                slide, para_chars, config["green_para"],
+                config["green_rect"], config["green_icon"], calib["y0"], calib["beta"], calib["kappa"],
+            )
+            _resize_highlight_box(
+                slide, para_chars, config["pink_para"],
+                config["pink_rect"], config["pink_icon"], calib["y0"], calib["beta"], calib["kappa"],
+            )
+        except Exception:
+            continue
+
+
+def apply_report_visuals(prs, participant, edition_id, cache, participant_tests=None, highlight_calibration=None):
+    """Point d'entrée unique : applique la jauge (diapo 9), les 5 mappings
+    d'importance (diapos 14/18/22/26/30) et le redimensionnement des encarts
+    forces/axes de progrès (diapos 6/7/8) sur une Presentation déjà ouverte
+    (après substitution des balises texte).
 
     cache : agrégats d'édition précalculés (voir report_cache.py).
     participant_tests : les tests du SEUL participant courant, déjà
     calculés par l'appelant (voir reports/routes.py) pour éviter une
-    requête redondante."""
+    requête redondante.
+    highlight_calibration : capturé par l'appelant AVANT substitution des
+    balises via capture_highlight_calibration (les encarts ont besoin de la
+    longueur du texte À BALISES pour se calibrer, déjà perdue à ce stade) ;
+    ignoré (encarts non redimensionnés) si None."""
     apply_gauge_chart(prs, participant, edition_id, participant_tests=participant_tests)
     apply_importance_mappings(prs, participant, edition_id, cache, participant_tests=participant_tests)
+    if highlight_calibration is not None:
+        apply_highlight_boxes(prs, highlight_calibration)
