@@ -69,6 +69,7 @@ def compute_edition_cache(edition_id):
 
     rows = build_compilation_rows(all_participants, all_tests)
     row_by_pid = {r["participant_id"]: r for r in rows}
+    participant_name_by_id = {p.id: p.participant_name for p in all_participants}
     winners = build_category_winners(rows)
     laureat_ids = {w["winner_participant_id"] for w in winners}
     tested_ids = {r["participant_id"] for r in rows if r["nb_tests_total"] > 0}
@@ -113,6 +114,26 @@ def compute_edition_cache(edition_id):
             r = compute_importance(channel, code, tests_with_note)
             importance[channel][str(code)] = (r ** 2) if r is not None else 0.0
 
+    # Classement de TOUS les participants de l'édition (pas seulement de la
+    # catégorie — décision explicite), note globale + par canal, triés du
+    # meilleur au moins bon — utilisé par la restitution (graphiques de
+    # classement, voir app/restitutions/debrief_visuals.py) pour situer un
+    # participant parmi tous les autres sans reparcourir les tests à chaque
+    # génération de présentation.
+    ranking = {"global": []}
+    for channel in CHANNEL_ORDER:
+        ranking[channel] = []
+    for pid, row in row_by_pid.items():
+        name = participant_name_by_id.get(pid, "")
+        if row["consolidated_score"] is not None:
+            ranking["global"].append({"participant_id": pid, "name": name, "score": row["consolidated_score"]})
+        for channel in CHANNEL_ORDER:
+            note = row["channels"][channel]["note_20"]
+            if note is not None:
+                ranking[channel].append({"participant_id": pid, "name": name, "score": note})
+    for key in ranking:
+        ranking[key].sort(key=lambda r: r["score"], reverse=True)
+
     return {
         "tous": compute_scope_values(tests_for(tested_ids)),
         "laureats": compute_scope_values(tests_for(laureat_ids)),
@@ -126,6 +147,7 @@ def compute_edition_cache(edition_id):
             "by_category": global_note_by_category,
         },
         "importance": importance,
+        "ranking": ranking,
         "has_winners": bool(winners),
     }
 

@@ -31,7 +31,7 @@ from app.menu import MENU_ITEMS
 from app.reports.generator import substitute_tags
 from app.reports.report_cache import get_fresh_edition_cache
 from app.reports.report_data import build_participant_placeholders
-from app.reports.report_visuals import apply_report_visuals, capture_highlight_calibration
+from app.restitutions.debrief_visuals import apply_debrief_visuals
 
 restitutions_bp = Blueprint("restitutions", __name__, url_prefix="/restitutions")
 
@@ -182,12 +182,6 @@ def create_restitution():
 
     prs = Presentation(io.BytesIO(template.file_data))
 
-    # Capturé AVANT substitution : voir reports.create_report — sans effet
-    # sur un modèle de restitution qui ne reprend pas les encarts forces/
-    # axes de progrès du rapport d'étude (aucune forme ne correspondra,
-    # capture_highlight_calibration/apply_highlight_boxes sont best-effort).
-    highlight_calibration = capture_highlight_calibration(prs)
-
     unknown_tags = substitute_tags(prs, values)
 
     if unknown_tags:
@@ -199,16 +193,14 @@ def create_restitution():
         )
         return redirect(url_for("restitutions.list_restitutions"))
 
-    # Graphiques natifs éventuels (jauge, mapping d'importance...) : best-
-    # effort, comme pour le rapport d'étude — si le modèle de restitution
-    # ne correspond pas à la structure attendue (nom de forme différent),
-    # on préfère livrer la présentation avec les balises texte déjà
-    # remplies plutôt que de faire échouer toute la génération.
+    # Graphiques de comparaison/classement + répartition verte/rouge des
+    # critères (voir debrief_visuals.py) : best-effort — si le modèle de
+    # restitution ne correspond pas à la structure attendue (nom/position
+    # de forme différente), on préfère livrer la présentation avec les
+    # balises texte déjà remplies plutôt que de faire échouer toute la
+    # génération.
     try:
-        apply_report_visuals(
-            prs, participant, edition_id, cache,
-            participant_tests=participant_tests, highlight_calibration=highlight_calibration,
-        )
+        apply_debrief_visuals(prs, participant, cache, values)
     except Exception:
         current_app.logger.exception("Échec de la mise à jour des graphiques natifs de la restitution")
 
