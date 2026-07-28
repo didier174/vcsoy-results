@@ -49,6 +49,7 @@ def create_app(config_class=Config):
     from app.admin.routes import admin_bp
     from app.invoicing.routes import invoicing_bp
     from app.reports.routes import reports_bp
+    from app.restitutions.routes import restitutions_bp
     from app.scenarios.routes import scenarios_bp
 
     app.register_blueprint(auth_bp)
@@ -60,6 +61,7 @@ def create_app(config_class=Config):
     app.register_blueprint(admin_bp)
     app.register_blueprint(invoicing_bp)
     app.register_blueprint(reports_bp)
+    app.register_blueprint(restitutions_bp)
     app.register_blueprint(scenarios_bp)
 
     @login_manager.user_loader

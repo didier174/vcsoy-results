@@ -376,6 +376,55 @@ class StudyReport(db.Model):
     created_by = db.relationship("User")
 
 
+class RestitutionTemplate(db.Model):
+    """
+    Un modèle de présentation chargé pour « Restitution » : même principe
+    que ReportTemplate (rapport d'étude), mais pour les présentations de
+    restitution des résultats remises à chaque participant.
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    edition_id = db.Column(db.String(20), nullable=False, index=True)
+
+    filename = db.Column(db.String(255))
+    content_type = db.Column(db.String(100))
+    file_data = db.Column(db.LargeBinary, nullable=False)
+    file_size = db.Column(db.Integer)
+
+    uploaded_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    uploaded_by = db.relationship("User")
+
+
+class Restitution(db.Model):
+    """
+    Une présentation de restitution générée pour un participant, à partir
+    d'un modèle (RestitutionTemplate) : même principe que StudyReport
+    (rapport d'étude), mais pour la restitution.
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    edition_id = db.Column(db.String(20), nullable=False, index=True)
+
+    name = db.Column(db.String(255), nullable=False)
+
+    participant_id = db.Column(db.Integer, db.ForeignKey("participant.id"), nullable=True)
+    restitution_template_id = db.Column(db.Integer, db.ForeignKey("restitution_template.id"), nullable=True)
+
+    filename = db.Column(db.String(255))
+    content_type = db.Column(db.String(100))
+    file_data = db.Column(db.LargeBinary, nullable=False)
+    file_size = db.Column(db.Integer)
+
+    created_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    participant = db.relationship("Participant")
+    restitution_template = db.relationship("RestitutionTemplate")
+    created_by = db.relationship("User")
+
+
 class ScenarioTemplate(db.Model):
     """
     Un modèle chargé pour « Gestion des scénarios » > « Générer des

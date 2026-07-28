@@ -42,6 +42,8 @@
           <a href="{{ url_for('results.winners_page') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
         {% elif item == "Rapport d'étude" %}
           <a href="{{ url_for('reports.list_reports') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
+        {% elif item == "Restitution" %}
+          <a href="{{ url_for('restitutions.list_restitutions') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
         {% elif item == "Administration" %}
           <a href="{{ url_for('admin.list_users') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
         {% elif item == "Facturation" %}
