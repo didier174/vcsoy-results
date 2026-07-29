@@ -110,13 +110,33 @@ def _substitute_paragraph(paragraph, lookup, color_enabled=False):
     if "{{" not in full_text:
         return
 
-    new_text = TAG_RE.sub(lambda m: str(lookup.get(_normalize(m.group(1)), m.group(0))), full_text)
-    if new_text == full_text or not paragraph.runs:
-        return
+    def _substitute(text):
+        return TAG_RE.sub(lambda m: str(lookup.get(_normalize(m.group(1)), m.group(0))), text)
 
-    paragraph.runs[0].text = new_text
-    for run in paragraph.runs[1:]:
-        run.text = ""
+    # Remplacement RUN PAR RUN d'abord : préserve la mise en forme propre à
+    # CHAQUE run (couleur, gras...) tant qu'une balise est entièrement
+    # contenue dans un seul run (cas normal — ex. un numéro de page en
+    # rouge suivi, dans un autre run, du texte de l'entrée en bleu avec sa
+    # balise : sans ce traitement par run, tout le texte du paragraphe
+    # finirait dans le run[0] et hériterait de SA couleur, ici le rouge).
+    for run in paragraph.runs:
+        if "{{" not in run.text:
+            continue
+        new_run_text = _substitute(run.text)
+        if new_run_text != run.text:
+            run.text = new_run_text
+
+    # Repli : balise(s) encore présente(s) après le passage run par run —
+    # coupée(s) entre 2 runs (revisions Word/PowerPoint), non gérable sans
+    # fusionner les runs concernés. Comportement historique dans ce cas :
+    # tout le texte substitué dans runs[0], les autres runs vidés.
+    remaining_text = _paragraph_text(paragraph)
+    if "{{" in remaining_text and paragraph.runs:
+        new_text = _substitute(remaining_text)
+        if new_text != remaining_text:
+            paragraph.runs[0].text = new_text
+            for run in paragraph.runs[1:]:
+                run.text = ""
 
     if color_enabled:
         _apply_color(paragraph, lookup, full_text.strip())
