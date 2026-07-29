@@ -5,11 +5,11 @@ balises {{ ... }} texte :
 
 - diapositives 5/6/9/12/15/18 : graphique de comparaison (Vous / Catégorie /
   Ensemble des participants / Lauréats), note globale et par canal.
-- diapositives 5/6/9/12/15 (pas de graphique de classement pour le chat
-  dans le modèle) : graphique de classement, une fenêtre de 8 participants
-  centrée sur le participant courant (classement sur l'ensemble de
-  l'édition, tous canaux confondus pour la diapo globale, canal par canal
-  ensuite), avec sa barre mise en évidence à sa vraie position.
+- diapositives 5/6/9/12/15/18 : graphique de classement (classement sur
+  l'ensemble de l'édition, tous canaux confondus pour la diapo globale,
+  canal par canal ensuite), sans trou entre le rang 1 et le participant
+  (voir _ranking_window), avec sa barre mise en évidence à sa vraie
+  position.
 - diapositive 5 : texte "Classement Xème" (classement global de l'édition).
 - diapositives 6/9/12/15/18 : répartition dynamique des critères en 2
   colonnes (verte à gauche / rouge à droite) selon que la note du critère,
@@ -189,11 +189,31 @@ def _set_num_cache(numcache_el, values):
         v_el.text = repr(float(value))
 
 
+def _recolor_dpt(dpt, color_hex):
+    fill = dpt.find(f".//{qn('a:solidFill')}")
+    if fill is None:
+        return
+    for child in list(fill):
+        fill.remove(child)
+    color_el = etree.SubElement(fill, qn("a:srgbClr"))
+    color_el.set("val", color_hex)
+
+
 def _set_dpt_colors(ser, n_points, highlight_idx):
     """Recolore les points du graphique (c:dPt) : `highlight_idx` en
     HIGHLIGHT_COLOR, tous les autres en OTHER_COLOR, et retire les points
     au-delà de `n_points` (édition avec moins de RANKING_WINDOW_SIZE
-    participants pour ce canal)."""
+    participants pour ce canal).
+
+    Un point sans c:dPt dans le modèle (ex. le modèle d'origine n'avait que
+    7 séries d'exemple pour un graphique qui en affiche maintenant 8)
+    garde par défaut la couleur de base de la série — pas forcément
+    OTHER_COLOR (confirmé : une barre se retrouvait bleue par défaut, sans
+    qu'aucun code ne l'ait explicitement coloriée). On crée donc les c:dPt
+    manquants en clonant un c:dPt existant, plutôt que de laisser un point
+    sans couleur explicite."""
+    existing = {}
+    last_dpt = None
     for dpt in list(ser.findall(qn("c:dPt"))):
         idx_el = dpt.find(qn("c:idx"))
         if idx_el is None:
@@ -202,13 +222,38 @@ def _set_dpt_colors(ser, n_points, highlight_idx):
         if idx >= n_points:
             ser.remove(dpt)
             continue
-        fill = dpt.find(f".//{qn('a:solidFill')}")
-        if fill is None:
+        existing[idx] = dpt
+        last_dpt = dpt
+
+    template_dpt = next(iter(existing.values()), None)
+    anchor = last_dpt
+
+    for idx in range(n_points):
+        color = HIGHLIGHT_COLOR if idx == highlight_idx else OTHER_COLOR
+        if idx in existing:
+            dpt = existing[idx]
+        elif template_dpt is not None:
+            dpt = deepcopy(template_dpt)
+            dpt.find(qn("c:idx")).set("val", str(idx))
+            order_el = dpt.find(qn("c:order"))
+            if order_el is not None:
+                order_el.set("val", str(idx))
+            if anchor is not None:
+                anchor.addnext(dpt)
+            else:
+                # aucun c:dPt existant du tout : insérer avant c:dLbls/c:cat
+                # pour respecter l'ordre imposé par le schéma du c:ser
+                before = ser.find(qn("c:dLbls"))
+                if before is None:
+                    before = ser.find(qn("c:cat"))
+                if before is not None:
+                    before.addprevious(dpt)
+                else:
+                    ser.append(dpt)
+            anchor = dpt
+        else:
             continue
-        for child in list(fill):
-            fill.remove(child)
-        color_el = etree.SubElement(fill, qn("a:srgbClr"))
-        color_el.set("val", HIGHLIGHT_COLOR if idx == highlight_idx else OTHER_COLOR)
+        _recolor_dpt(dpt, color)
 
 
 # --------------------------------------------------- Graphique de comparaison
@@ -243,29 +288,40 @@ def apply_comparison_charts(prs, values):
 
 # ------------------------------------------------------ Graphique de classement
 
-def _ranking_window(ranking, participant_id, size=RANKING_WINDOW_SIZE):
-    """Fenêtre de `size` entrées de `ranking` (déjà trié décroissant) qui
-    inclut TOUJOURS le 1er de l'édition (référence visuelle du meilleur
-    niveau atteint) ET le participant à sa vraie position relative parmi
-    le reste — centrée sur lui, sauf en bord de classement. Sans la
-    réservation du rang 1, une fenêtre purement centrée sur un participant
-    classé au-delà de la moitié du tableau pouvait l'exclure entièrement
-    (confirmé : le 1er du canal Internet manquait du graphique)."""
+RANKING_HARD_CAP = 20
+
+
+def _ranking_window(ranking, participant_id, size=RANKING_WINDOW_SIZE, hard_cap=RANKING_HARD_CAP):
+    """Fenêtre de `ranking` (déjà trié décroissant) SANS TROU entre le rang 1
+    et le participant : si celui-ci est déjà dans le top `size`, fenêtre
+    simple ranking[:size] (son propre cas). Sinon, la fenêtre s'ÉTEND du
+    rang 1 jusqu'à lui (donc parfois plus de `size` barres), plutôt que de
+    risquer d'exclure un concurrent mieux classé que lui : un simple
+    centrage, ou même la seule réservation du rang 1, avaient déjà chacun
+    laissé disparaître un concurrent mieux classé du graphique (confirmé 2
+    fois sur le canal Internet). Repli sur un centrage classique seulement
+    si le participant est classé au-delà de `hard_cap` (édition avec
+    beaucoup de participants testés sur ce canal) : la référence au rang 1
+    n'est alors plus garantie, mais generateur un graphique de `hard_cap`+
+    barres serait illisible."""
     n = len(ranking)
     pos = next((i for i, r in enumerate(ranking) if r["participant_id"] == participant_id), None)
     if pos is None or n == 0:
         return [], None
-    size = min(size, n)
-    if pos == 0:
-        return ranking[:size], 0
 
-    rest = ranking[1:]
-    rest_size = size - 1
-    rest_pos = pos - 1
-    half = rest_size // 2
-    start = max(0, min(rest_pos - half, len(rest) - rest_size))
-    window = [ranking[0]] + rest[start:start + rest_size]
-    return window, 1 + (rest_pos - start)
+    if pos < size:
+        window_size = min(size, n)
+        return ranking[:window_size], pos
+
+    extended_size = min(pos + 1, hard_cap, n)
+    if extended_size > pos:
+        return ranking[:extended_size], pos
+
+    window_size = min(size, n)
+    half = window_size // 2
+    start = max(0, min(pos - half, n - window_size))
+    window = ranking[start:start + window_size]
+    return window, pos - start
 
 
 def apply_ranking_charts(prs, participant, cache):
