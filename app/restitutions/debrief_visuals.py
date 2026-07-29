@@ -325,13 +325,16 @@ def _ranking_window(ranking, participant_id, size=RANKING_WINDOW_SIZE, hard_cap=
 
 
 def _force_horizontal_category_labels(chartspace):
-    """Sans réglage explicite, PowerPoint choisit lui-même l'orientation
-    des étiquettes de l'axe des catégories selon la largeur disponible par
-    barre — confirmé : un graphique dupliqué tel quel d'un canal à cadre
-    large (Téléphone) vers un cadre plus étroit (Chat) affichait les mêmes
-    étiquettes en diagonale au lieu d'à l'horizontale. On force donc
-    l'orientation, comme déjà réglée en dur sur les graphiques de
-    comparaison du modèle (rot="0" vert="horz")."""
+    """Sans réglage explicite, PowerPoint choisit lui-même l'orientation ET
+    l'espacement des étiquettes de l'axe des catégories selon la largeur
+    disponible par barre — confirmé : un graphique dupliqué tel quel d'un
+    canal à cadre large (Téléphone) vers un cadre plus étroit (Chat)
+    affichait les mêmes étiquettes en diagonale, PUIS une fois l'angle
+    corrigé, une sur deux (Participant 1, Participant 3, ... l'axe saute
+    l'intervalle qu'il juge nécessaire pour ne pas les faire se chevaucher).
+    On force donc l'orientation ET l'affichage de CHAQUE étiquette, comme
+    déjà réglé en dur sur les graphiques de comparaison du modèle
+    (rot="0" vert="horz")."""
     catax = chartspace.find(f".//{qn('c:catAx')}")
     if catax is None:
         return
@@ -344,6 +347,21 @@ def _force_horizontal_category_labels(chartspace):
         txpr.insert(0, bodypr)
     bodypr.set("rot", "0")
     bodypr.set("vert", "horz")
+
+    # c:tickLblSkip (intervalle entre 2 étiquettes affichées) doit être
+    # placé juste avant c:noMultiLvlLbl (ordre imposé par le schéma du
+    # c:catAx) ; absent du modèle, PowerPoint choisit alors lui-même
+    # l'intervalle selon la largeur disponible.
+    if catax.find(qn("c:tickLblSkip")) is None:
+        skip_el = etree.Element(qn("c:tickLblSkip"))
+        skip_el.set("val", "1")
+        anchor = catax.find(qn("c:noMultiLvlLbl"))
+        if anchor is not None:
+            anchor.addprevious(skip_el)
+        else:
+            catax.append(skip_el)
+    else:
+        catax.find(qn("c:tickLblSkip")).set("val", "1")
 
 
 def apply_ranking_charts(prs, participant, cache):
