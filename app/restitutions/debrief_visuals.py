@@ -283,43 +283,6 @@ def apply_classement_text(prs, participant, cache):
         break
 
 
-def _fmt_note_range(value):
-    return f"{value:.2f}".replace(".", ",")
-
-
-def apply_notes_range(prs, cache):
-    """Encart "Notes toutes catégories XX à XX" des 6 diapositives de
-    comparaison : plage min-max de TOUS les participants de l'édition
-    (toutes catégories confondues, comme le classement) — note globale
-    pour la diapo 5, note du canal pour les 5 autres. `ranking` est déjà
-    trié décroissant (voir report_cache.py) : le min/max est donc son
-    dernier/premier élément."""
-    for scope, slide_idx in COMPARISON_SLIDE_BY_SCOPE.items():
-        if slide_idx >= len(prs.slides):
-            continue
-        ranking = cache.get("ranking", {}).get(scope, [])
-        if not ranking:
-            continue
-        highest, lowest = ranking[0]["score"], ranking[-1]["score"]
-
-        slide = prs.slides[slide_idx]
-        for shape in slide.shapes:
-            if not getattr(shape, "has_text_frame", False):
-                continue
-            if "toutes catégories" not in shape.text_frame.text:
-                continue
-            cnv_pr = shape._element.find(f".//{qn('p:cNvPr')}")
-            if cnv_pr is not None and cnv_pr.get("hidden") == "1":
-                continue
-            paragraphs = shape.text_frame.paragraphs
-            if len(paragraphs) < 2 or not paragraphs[1].runs:
-                continue
-            runs = paragraphs[1].runs
-            runs[0].text = _fmt_note_range(lowest)
-            runs[-1].text = _fmt_note_range(highest)
-            break
-
-
 # --------------------------------------------------- Répartition des critères
 
 CRITERION_LINE_RE = re.compile(r"^C\d+\s")
@@ -425,10 +388,6 @@ def apply_debrief_visuals(prs, participant, cache, values):
         pass
     try:
         apply_classement_text(prs, participant, cache)
-    except Exception:
-        pass
-    try:
-        apply_notes_range(prs, cache)
     except Exception:
         pass
     for channel in CHANNEL_ORDER:

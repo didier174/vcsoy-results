@@ -417,4 +417,17 @@ def build_participant_placeholders(participant, edition_id, cache, all_tests=Non
     values["Global note laureats"] = cache["global_note"]["laureats"]
     values["Global note non laureats"] = cache["global_note"]["non_laureats"]
 
+    # ------------------------------------------- Plage min/max (classement)
+    # cache["ranking"][scope] : tous les participants TESTÉS de l'édition
+    # (toutes catégories), déjà triés décroissant (voir report_cache.py) —
+    # le min/max est donc simplement le dernier/premier élément.
+    ranking = cache.get("ranking", {})
+    global_scores = [r["score"] for r in ranking.get("global", [])]
+    values["Global note min"] = _fmt_note(global_scores[-1]) if global_scores else "—"
+    values["Global note max"] = _fmt_note(global_scores[0]) if global_scores else "—"
+    for channel in CHANNEL_ORDER:
+        channel_scores = [r["score"] for r in ranking.get(channel, [])]
+        values[f"{channel} note min"] = _fmt_note(channel_scores[-1]) if channel_scores else "—"
+        values[f"{channel} note max"] = _fmt_note(channel_scores[0]) if channel_scores else "—"
+
     return values
