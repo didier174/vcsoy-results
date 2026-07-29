@@ -104,9 +104,10 @@ def _as_float(value):
 # --------------------------------------------------------- Lecture du XML
 
 def _find_chart_ser_by_marker(slide, marker):
-    """Retourne (ser, cat_strCache, val_numCache) du premier graphique de la
-    diapo dont au moins une catégorie contient `marker` (ex. "Catégorie"
-    pour le graphique de comparaison, "Participant" pour le classement)."""
+    """Retourne (chartspace, ser, cat_strCache, val_numCache) du premier
+    graphique de la diapo dont au moins une catégorie contient `marker`
+    (ex. "Catégorie" pour le graphique de comparaison, "Participant" pour
+    le classement)."""
     for shape in slide.shapes:
         if not getattr(shape, "has_chart", False):
             continue
@@ -125,8 +126,37 @@ def _find_chart_ser_by_marker(slide, marker):
             strcache = cat.find(f".//{qn('c:strCache')}")
             val_el = ser.find(qn("c:val"))
             numcache = val_el.find(f".//{qn('c:numCache')}") if val_el is not None else None
-            return ser, strcache, numcache
-    return None, None, None
+            return cs, ser, strcache, numcache
+    return None, None, None, None
+
+
+# Marge (en points sur 20) ajoutée de part et d'autre des valeurs
+# réellement affichées pour calibrer l'axe des ordonnées de chaque
+# histogramme — bien plus resserré que la plage fixe du modèle (souvent
+# 0-20 ou 8-20), pour que les écarts entre barres restent visibles à l'œil
+# même quand toutes les notes sont proches les unes des autres.
+AXIS_PADDING = 1.0
+AXIS_FLOOR, AXIS_CEIL = 0.0, 20.0
+
+
+def _set_value_axis_range(chartspace, values):
+    values = [v for v in values if v is not None]
+    if not values:
+        return
+    axis = chartspace.find(f".//{qn('c:valAx')}")
+    if axis is None:
+        return
+    lo = max(AXIS_FLOOR, min(values) - AXIS_PADDING)
+    hi = min(AXIS_CEIL, max(values) + AXIS_PADDING)
+    if hi - lo < 2:  # évite un axe dégénéré si toutes les valeurs sont quasi identiques
+        mid = (lo + hi) / 2
+        lo, hi = max(AXIS_FLOOR, mid - 1), min(AXIS_CEIL, mid + 1)
+    min_el = axis.find(f".//{qn('c:min')}")
+    max_el = axis.find(f".//{qn('c:max')}")
+    if min_el is not None:
+        min_el.set("val", repr(round(lo, 1)))
+    if max_el is not None:
+        max_el.set("val", repr(round(hi, 1)))
 
 
 def _set_str_cache(strcache_el, values):
@@ -191,7 +221,7 @@ def apply_comparison_charts(prs, values):
         if slide_idx >= len(prs.slides):
             continue
         slide = prs.slides[slide_idx]
-        ser, _, numcache = _find_chart_ser_by_marker(slide, "Catégorie")
+        chartspace, _, _, numcache = _find_chart_ser_by_marker(slide, "Catégorie")
         if numcache is None:
             continue
 
@@ -206,24 +236,36 @@ def apply_comparison_charts(prs, values):
             tous = _as_float(values.get(f"{scope} note tous"))
             laureats = _as_float(values.get(f"{scope} note laureats"))
 
-        _set_num_cache(numcache, [v if v is not None else 0.0 for v in (own, categorie, tous, laureats)])
+        display_values = (own, categorie, tous, laureats)
+        _set_num_cache(numcache, [v if v is not None else 0.0 for v in display_values])
+        _set_value_axis_range(chartspace, display_values)
 
 
 # ------------------------------------------------------ Graphique de classement
 
 def _ranking_window(ranking, participant_id, size=RANKING_WINDOW_SIZE):
     """Fenêtre de `size` entrées de `ranking` (déjà trié décroissant) qui
-    inclut TOUJOURS le participant à sa vraie position relative — centrée
-    sur lui, sauf en bord de classement (tête ou queue de fenêtre)."""
+    inclut TOUJOURS le 1er de l'édition (référence visuelle du meilleur
+    niveau atteint) ET le participant à sa vraie position relative parmi
+    le reste — centrée sur lui, sauf en bord de classement. Sans la
+    réservation du rang 1, une fenêtre purement centrée sur un participant
+    classé au-delà de la moitié du tableau pouvait l'exclure entièrement
+    (confirmé : le 1er du canal Internet manquait du graphique)."""
     n = len(ranking)
     pos = next((i for i, r in enumerate(ranking) if r["participant_id"] == participant_id), None)
     if pos is None or n == 0:
         return [], None
     size = min(size, n)
-    half = size // 2
-    start = max(0, min(pos - half, n - size))
-    window = ranking[start:start + size]
-    return window, pos - start
+    if pos == 0:
+        return ranking[:size], 0
+
+    rest = ranking[1:]
+    rest_size = size - 1
+    rest_pos = pos - 1
+    half = rest_size // 2
+    start = max(0, min(rest_pos - half, len(rest) - rest_size))
+    window = [ranking[0]] + rest[start:start + rest_size]
+    return window, 1 + (rest_pos - start)
 
 
 def apply_ranking_charts(prs, participant, cache):
@@ -232,7 +274,7 @@ def apply_ranking_charts(prs, participant, cache):
         if slide_idx >= len(prs.slides):
             continue
         slide = prs.slides[slide_idx]
-        ser, strcache, numcache = _find_chart_ser_by_marker(slide, "Participant")
+        chartspace, ser, strcache, numcache = _find_chart_ser_by_marker(slide, "Participant")
         if ser is None:
             continue  # pas de graphique de classement pour ce canal (ex. chat)
 
@@ -244,9 +286,11 @@ def apply_ranking_charts(prs, participant, cache):
             participant.participant_name if i == own_idx else f"Participant {i + 1}"
             for i in range(len(window))
         ]
+        scores = [w["score"] for w in window]
         _set_str_cache(strcache, labels)
-        _set_num_cache(numcache, [w["score"] for w in window])
+        _set_num_cache(numcache, scores)
         _set_dpt_colors(ser, len(window), own_idx)
+        _set_value_axis_range(chartspace, scores)
 
 
 def _ordinal_fr(n):
