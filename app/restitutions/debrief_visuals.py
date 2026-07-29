@@ -324,6 +324,28 @@ def _ranking_window(ranking, participant_id, size=RANKING_WINDOW_SIZE, hard_cap=
     return window, pos - start
 
 
+def _force_horizontal_category_labels(chartspace):
+    """Sans réglage explicite, PowerPoint choisit lui-même l'orientation
+    des étiquettes de l'axe des catégories selon la largeur disponible par
+    barre — confirmé : un graphique dupliqué tel quel d'un canal à cadre
+    large (Téléphone) vers un cadre plus étroit (Chat) affichait les mêmes
+    étiquettes en diagonale au lieu d'à l'horizontale. On force donc
+    l'orientation, comme déjà réglée en dur sur les graphiques de
+    comparaison du modèle (rot="0" vert="horz")."""
+    catax = chartspace.find(f".//{qn('c:catAx')}")
+    if catax is None:
+        return
+    txpr = catax.find(qn("c:txPr"))
+    if txpr is None:
+        txpr = etree.SubElement(catax, qn("c:txPr"))
+    bodypr = txpr.find(qn("a:bodyPr"))
+    if bodypr is None:
+        bodypr = etree.Element(qn("a:bodyPr"))
+        txpr.insert(0, bodypr)
+    bodypr.set("rot", "0")
+    bodypr.set("vert", "horz")
+
+
 def apply_ranking_charts(prs, participant, cache):
     ranking_by_scope = cache.get("ranking", {})
     for scope, slide_idx in COMPARISON_SLIDE_BY_SCOPE.items():
@@ -347,6 +369,7 @@ def apply_ranking_charts(prs, participant, cache):
         _set_num_cache(numcache, scores)
         _set_dpt_colors(ser, len(window), own_idx)
         _set_value_axis_range(chartspace, scores)
+        _force_horizontal_category_labels(chartspace)
 
 
 def _ordinal_fr(n):
