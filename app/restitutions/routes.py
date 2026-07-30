@@ -36,6 +36,8 @@ from app.restitutions.debrief_visuals import apply_debrief_visuals
 restitutions_bp = Blueprint("restitutions", __name__, url_prefix="/restitutions")
 
 ACTIVE_ITEM = "Restitution"
+ACTIVE_ITEM_SELECT_TESTS = "Selection test pour restitution"
+ACTIVE_ITEM_REDACT_RECORDS = "Caviarder des records"
 
 RESTITUTION_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
@@ -83,6 +85,34 @@ def list_restitutions():
     return render_template(
         "restitutions/list.html", edition=edition, restitutions=restitutions, templates=templates,
         participants=participants, active_item=ACTIVE_ITEM, menu_items=MENU_ITEMS,
+    )
+
+
+@restitutions_bp.route("/selection-tests", methods=["GET"])
+@login_required
+def select_tests():
+    """Choix, par canal, des tests les moins bien notés à insérer (records
+    caviardés) dans la restitution — fonctionnalité en cours de réflexion,
+    page en place pour la navigation en attendant sa conception."""
+    edition_id = get_current_edition_id()
+    edition = get_edition(edition_id)
+    return render_template(
+        "restitutions/select_tests.html", edition=edition,
+        active_item=ACTIVE_ITEM_SELECT_TESTS, menu_items=MENU_ITEMS,
+    )
+
+
+@restitutions_bp.route("/caviardage", methods=["GET"])
+@login_required
+def redact_records():
+    """Caviardage des records sélectionnés avant insertion dans la
+    restitution — fonctionnalité en cours de réflexion, page en place pour
+    la navigation en attendant sa conception."""
+    edition_id = get_current_edition_id()
+    edition = get_edition(edition_id)
+    return render_template(
+        "restitutions/redact_records.html", edition=edition,
+        active_item=ACTIVE_ITEM_REDACT_RECORDS, menu_items=MENU_ITEMS,
     )
 
 
