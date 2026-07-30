@@ -40,17 +40,24 @@ DOUBLED_CODE_BY_CHANNEL = {
 EXCLUDED_VALUES = {"non applicable", "non observable"}
 
 
-def compute_test_score(channel, raw_data):
+def compute_test_score(channel, raw_data, codes=None):
     """
     Retourne {"note_brute", "note_max", "note_20", "nb_criteres"} pour un
     test, ou None si aucun critère « Code N » valide n'est renseigné.
+
+    codes : si fourni, restreint le calcul à ces seuls numéros de critère
+    (ex. sélection manuelle de critères pour la restitution) — None
+    (par défaut) prend en compte tous les critères du test, comme avant.
     """
     doubled_code = DOUBLED_CODE_BY_CHANNEL.get(channel)
+    wanted_codes = set(codes) if codes is not None else None
     raw_sum = 0
     max_sum = 0
     nb_criteres = 0
 
     for code in extract_codes(raw_data):
+        if wanted_codes is not None and code["number"] not in wanted_codes:
+            continue
         value = code["value"]
         if value is None or str(value).strip() == "":
             continue

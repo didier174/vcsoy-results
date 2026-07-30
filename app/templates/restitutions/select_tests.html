@@ -5,10 +5,176 @@
   <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
 
   <p class="muted">
-    Cette page permettra de choisir, canal par canal, les tests les moins
-    bien notés dont les records seront insérés dans la restitution.
-    Fonctionnalité en cours de conception — page en place pour la
-    navigation en attendant.
+    Recherche, pour un participant et un canal, les tests complets (QS
+    completed) les moins bien notés — sur tous les critères du canal, ou
+    seulement sur une sélection de critères — afin de récupérer leurs
+    records pour la restitution.
   </p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-list">
+        {% for category, message in messages %}
+          <p class="flash {{ 'flash-error' if category == 'error' else 'flash-success' }}">{{ message }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  {% if not has_any_test %}
+    <div class="upload-card">
+      <p class="muted">Aucun résultat de test chargé pour cette édition — chargez des fichiers de résultats avant d'utiliser cette page.</p>
+    </div>
+  {% elif not participants %}
+    <div class="upload-card">
+      <p class="muted">Aucun participant n'a de test chargé pour un canal qui lui est déclaré actif.</p>
+    </div>
+  {% else %}
+    <div class="actions actions-top">
+      <button type="button" class="btn btn-primary" onclick="document.getElementById('select-tests-popup').showModal()">
+        Nouvelle sélection
+      </button>
+    </div>
+  {% endif %}
+
+  {% if results is not none %}
+    <h2 class="detail-section-title">
+      Résultats — {{ search_params.participant_name }} / {{ search_params.channel_label }}
+    </h2>
+    <form method="post" action="{{ url_for('restitutions.delete_selected_tests') }}" id="selected-tests-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="participant_id" value="{{ search_params.participant_id }}">
+      <input type="hidden" name="channel" value="{{ search_params.channel }}">
+      <input type="hidden" name="nb_tests" value="{{ search_params.nb_tests }}">
+      <input type="hidden" name="criteria_mode" value="{{ search_params.criteria_mode }}">
+      {% for code in search_params.codes %}
+        <input type="hidden" name="codes" value="{{ code }}">
+      {% endfor %}
+
+      {% if not results %}
+        <div class="upload-card">
+          <p class="muted">Aucun test ne correspond à cette sélection.</p>
+        </div>
+      {% else %}
+        <div class="table-card">
+          <div class="table-row table-header">
+            <div class="col col-check"></div>
+            <div class="col">Numéro de test</div>
+            <div class="col">Participant</div>
+            <div class="col">Canal</div>
+            <div class="col">Note</div>
+            <div class="col col-report-dl"></div>
+          </div>
+          {% for test in results %}
+            <script type="application/json" id="selected-test-data-{{ test.id }}">{{ test|tojson }}</script>
+            <div class="table-row">
+              <div class="col col-check">
+                <input type="checkbox" name="test_result_ids" value="{{ test.id }}" class="selected-test-checkbox">
+              </div>
+              <div class="col">{{ test.test_id }}</div>
+              <div class="col">{{ test.participant_name }}</div>
+              <div class="col">{{ test.channel_label }}</div>
+              <div class="col">{{ "%.2f"|format(test.note_20)|replace(".", ",") }}</div>
+              <div class="col col-report-dl">
+                {% if test.record_id %}
+                  <a href="{{ url_for('records.download_record', record_id=test.record_id) }}"
+                     class="btn btn-secondary btn-compact" target="_blank" rel="noopener"
+                     onclick="openRecordLink(event, this.href, {{ 'true' if test.record_is_audio else 'false' }})">
+                    Ouvrir record
+                  </a>
+                {% endif %}
+                <button type="button" class="btn btn-secondary btn-compact" onclick="showSelectedTestDetail({{ test.id }})">
+                  Détail test
+                </button>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+
+        {% if is_admin %}
+          <div class="actions">
+            <button type="submit" class="btn btn-secondary" id="delete-selected-tests-btn" disabled
+                    onclick="return confirm('Confirmez-vous la suppression définitive du/des test(s) sélectionné(s) ? Cette action est irréversible.');">
+              Supprimer
+            </button>
+          </div>
+        {% endif %}
+      {% endif %}
+    </form>
+  {% endif %}
 </div>
+
+<!-- Popup : nouvelle sélection -->
+<dialog id="select-tests-popup" class="app-dialog">
+  <h3>Nouvelle sélection de tests</h3>
+  <form method="get" action="{{ url_for('restitutions.select_tests') }}" id="select-tests-form">
+    <label class="dialog-input-label">
+      Participant
+      <select name="participant_id" id="select-tests-participant" required>
+        <option value="">— Choisir —</option>
+        {% for p in participants %}
+          <option value="{{ p.id }}" data-channels="{{ participant_channels[p.id]|join(',') }}">
+            {{ p.participant_name }}{% if p.code %} ({{ p.code }}){% endif %}
+          </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="dialog-input-label">
+      Canal
+      <select name="channel" id="select-tests-channel" required>
+        {% for key in channel_labels %}
+          <option value="{{ key }}" id="select-tests-channel-opt-{{ key }}">{{ channel_labels[key] }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="dialog-input-label">
+      Nombre de tests souhaité (1 à {{ max_tests }})
+      <input type="number" name="nb_tests" id="select-tests-nb" min="1" max="{{ max_tests }}" value="1" required>
+    </label>
+
+    <fieldset class="dialog-field">
+      <legend>Critères</legend>
+      <label class="dialog-input-label" style="display: flex; align-items: center; gap: 8px;">
+        <input type="radio" name="criteria_mode" value="tous" checked style="width: auto;" id="select-tests-criteria-tous">
+        <span>Tous les critères</span>
+      </label>
+      <label class="dialog-input-label" style="display: flex; align-items: center; gap: 8px;">
+        <input type="radio" name="criteria_mode" value="selection" style="width: auto;" id="select-tests-criteria-selection">
+        <span>Sélection de critères</span>
+      </label>
+
+      <div id="select-tests-criteria-blocks">
+        {% for channel, criteria in criteria_by_channel.items() %}
+          <div class="criteria-block" id="select-tests-criteria-block-{{ channel }}" style="display: none;">
+            {% for c in criteria %}
+              <label class="dialog-input-label" style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" name="codes" value="{{ c.code }}" class="select-tests-criteria-checkbox" data-channel="{{ channel }}" style="width: auto;">
+                <span>C{{ c.code }} — {{ c.name }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Annuler</button>
+      <button type="submit" class="btn btn-primary" id="select-tests-submit">Rechercher</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Popup : détail d'un test sélectionné (même principe que Liste des tests) -->
+<dialog id="selected-test-detail-popup" class="app-dialog">
+  <h3 id="selected-test-detail-title">Détail du test</h3>
+  <div id="selected-test-detail-codes" class="other-data-grid"></div>
+  <h4>Autres données</h4>
+  <div id="selected-test-detail-other" class="other-data-grid"></div>
+  <div class="dialog-actions">
+    <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Fermer</button>
+  </div>
+</dialog>
+
+<script src="{{ url_for('static', filename='js/records.js') }}"></script>
+<script src="{{ url_for('static', filename='js/select_tests.js') }}"></script>
 {% endblock %}

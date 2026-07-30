@@ -25,19 +25,24 @@ from pptx import Presentation
 
 from app.access_control import admin_required
 from app.extensions import db
-from app.models import Restitution, RestitutionTemplate, Participant, TestResult, ActionLog
+from app.models import Restitution, RestitutionTemplate, Participant, TestResult, TestRecord, ActionLog
 from app.editions import get_current_edition_id, get_edition
 from app.menu import MENU_ITEMS
 from app.reports.generator import substitute_tags
 from app.reports.report_cache import get_fresh_edition_cache
 from app.reports.report_data import build_participant_placeholders
-from app.restitutions.debrief_visuals import apply_debrief_visuals
+from app.restitutions.debrief_visuals import apply_debrief_visuals, CRITERION_SHORT_NAMES
+from app.results.presentation import CHANNEL_LABELS, CHANNEL_ORDER, build_test_view
+from app.results.scoring import compute_test_score, is_test_completed, CRITERIA_BY_CHANNEL
+from app.results.validation import CHANNEL_FIELD_BY_KEY
 
 restitutions_bp = Blueprint("restitutions", __name__, url_prefix="/restitutions")
 
 ACTIVE_ITEM = "Restitution"
 ACTIVE_ITEM_SELECT_TESTS = "Selection test pour restitution"
 ACTIVE_ITEM_REDACT_RECORDS = "Caviarder des records"
+
+MAX_TESTS_REQUEST = 5
 
 RESTITUTION_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
@@ -88,18 +93,166 @@ def list_restitutions():
     )
 
 
+def _participant_channel_counts(edition_id, participant_id):
+    """{canal: nb de tests} pour ce participant, tous canaux confondus."""
+    rows = (
+        db.session.query(TestResult.channel, db.func.count(TestResult.id))
+        .filter_by(edition_id=edition_id, participant_id=participant_id)
+        .group_by(TestResult.channel)
+        .all()
+    )
+    return dict(rows)
+
+
+def _search_worst_tests(edition_id, args):
+    """Cherche, pour un participant/canal donnés, les `nb_tests` tests
+    complets (QS completed) les moins bien notés — sur tous les critères
+    du canal, ou seulement sur la sélection de critères demandée.
+
+    Retourne (results, search_params, error) : `results` est une liste de
+    vues de test (voir build_test_view) avec leur note ajoutée, triée de
+    la moins bonne à la meilleure ; `search_params` reprend la sélection
+    telle que soumise (pour réafficher le formulaire et raffraîchir le
+    tableau après une suppression) ; `error` est un message à afficher si
+    la sélection est invalide ou si aucun test ne correspond."""
+    participant_id = args.get("participant_id", "").strip()
+    channel = args.get("channel", "").strip()
+    nb_tests_raw = args.get("nb_tests", "").strip()
+    criteria_mode = args.get("criteria_mode", "tous").strip()
+    codes_raw = [c for c in args.getlist("codes") if c.isdigit()]
+
+    search_params = {
+        "participant_id": participant_id, "channel": channel, "nb_tests": nb_tests_raw,
+        "criteria_mode": criteria_mode, "codes": codes_raw,
+    }
+
+    if not participant_id.isdigit() or channel not in CRITERIA_BY_CHANNEL:
+        return None, search_params, "Sélection invalide : choisissez un participant et un canal."
+
+    try:
+        nb_tests = int(nb_tests_raw)
+    except ValueError:
+        nb_tests = 0
+    if not (1 <= nb_tests <= MAX_TESTS_REQUEST):
+        return None, search_params, f"Le nombre de tests souhaité doit être entre 1 et {MAX_TESTS_REQUEST}."
+
+    participant = Participant.query.filter_by(id=int(participant_id), edition_id=edition_id).first()
+    if not participant:
+        return None, search_params, "Participant introuvable pour cette édition."
+    search_params["participant_name"] = participant.participant_name
+    search_params["channel_label"] = CHANNEL_LABELS.get(channel, channel)
+
+    codes = None
+    if criteria_mode == "selection":
+        codes = [int(c) for c in codes_raw]
+        if not codes:
+            return None, search_params, "Merci de choisir au moins un critère, ou « Tous les critères »."
+
+    tests = TestResult.query.filter_by(edition_id=edition_id, participant_id=participant.id, channel=channel).all()
+    scored = []
+    for t in tests:
+        raw_data = t.raw_data or {}
+        if not is_test_completed(channel, raw_data):
+            continue
+        score = compute_test_score(channel, raw_data, codes=codes)
+        if score is None:
+            continue
+        scored.append((score["note_20"], t))
+
+    if not scored:
+        return [], search_params, (
+            "Aucun test complet (QS completed) ne correspond à cette sélection de critères pour ce "
+            "participant et ce canal."
+        )
+
+    scored.sort(key=lambda pair: pair[0])
+    results = []
+    for note_20, t in scored[:nb_tests]:
+        view = build_test_view(t)
+        view["note_20"] = note_20
+        results.append(view)
+    return results, search_params, None
+
+
 @restitutions_bp.route("/selection-tests", methods=["GET"])
 @login_required
 def select_tests():
     """Choix, par canal, des tests les moins bien notés à insérer (records
-    caviardés) dans la restitution — fonctionnalité en cours de réflexion,
-    page en place pour la navigation en attendant sa conception."""
+    caviardés) dans la restitution. La liste des participants proposés, et
+    pour chacun les canaux proposés, sont déjà filtrés aux seuls canaux
+    déclarés actifs POUR CE PARTICIPANT et ayant au moins un test chargé
+    dans l'édition — ce qui vérifie par construction, avant même d'ouvrir
+    le pop-up, qu'une recherche pourra aboutir (voir demande explicite de
+    l'utilisateur)."""
     edition_id = get_current_edition_id()
     edition = get_edition(edition_id)
+
+    has_any_test = db.session.query(TestResult.id).filter_by(edition_id=edition_id).first() is not None
+
+    participants = Participant.query.filter_by(edition_id=edition_id).order_by(Participant.participant_name).all()
+    participant_channels = {}
+    for p in participants:
+        counts = _participant_channel_counts(edition_id, p.id)
+        valid = [c for c in CHANNEL_ORDER if getattr(p, CHANNEL_FIELD_BY_KEY[c], False) and counts.get(c, 0) > 0]
+        if valid:
+            participant_channels[p.id] = valid
+    participants_with_tests = [p for p in participants if p.id in participant_channels]
+
+    criteria_by_channel = {
+        channel: [{"code": code, "name": CRITERION_SHORT_NAMES[channel][code]} for code in sorted(codes)]
+        for channel, codes in CRITERIA_BY_CHANNEL.items()
+    }
+
+    results, search_params, error = None, None, None
+    if request.args.get("participant_id"):
+        results, search_params, error = _search_worst_tests(edition_id, request.args)
+        if error:
+            flash(error, "error")
+
     return render_template(
         "restitutions/select_tests.html", edition=edition,
         active_item=ACTIVE_ITEM_SELECT_TESTS, menu_items=MENU_ITEMS,
+        has_any_test=has_any_test, participants=participants_with_tests,
+        participant_channels=participant_channels, channel_labels=CHANNEL_LABELS,
+        criteria_by_channel=criteria_by_channel, max_tests=MAX_TESTS_REQUEST,
+        results=results, search_params=search_params,
     )
+
+
+@restitutions_bp.route("/selection-tests/delete", methods=["POST"])
+@login_required
+@admin_required
+def delete_selected_tests():
+    """Supprime les tests sélectionnés dans le tableau de résultats (et
+    leur record associé, s'il existe) — même principe que
+    records.delete_records : le record doit être supprimé avant le test
+    (pas de suppression en cascade configurée sur la relation)."""
+    edition_id = get_current_edition_id()
+    test_ids = [int(i) for i in request.form.getlist("test_result_ids") if i.isdigit()]
+    if not test_ids:
+        flash("Merci de choisir au moins un test à supprimer.", "error")
+    else:
+        to_delete = TestResult.query.filter(
+            TestResult.edition_id == edition_id, TestResult.id.in_(test_ids)
+        ).all()
+        deleted = len(to_delete)
+        ids = [t.id for t in to_delete]
+        TestRecord.query.filter(TestRecord.test_result_id.in_(ids)).delete(synchronize_session=False)
+        TestResult.query.filter(TestResult.edition_id == edition_id, TestResult.id.in_(ids)).delete(
+            synchronize_session=False
+        )
+        db.session.commit()
+        _log("Suppression de test(s) (sélection restitution)", details=f"{deleted} supprimé(s) (édition {edition_id})")
+        flash(f"{deleted} test(s) supprimé(s).", "success")
+
+    return redirect(url_for(
+        "restitutions.select_tests",
+        participant_id=request.form.get("participant_id", ""),
+        channel=request.form.get("channel", ""),
+        nb_tests=request.form.get("nb_tests", ""),
+        criteria_mode=request.form.get("criteria_mode", ""),
+        codes=[c for c in request.form.getlist("codes") if c.isdigit()],
+    ))
 
 
 @restitutions_bp.route("/caviardage", methods=["GET"])
