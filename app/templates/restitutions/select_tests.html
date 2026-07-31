@@ -38,22 +38,22 @@
   {% endif %}
 
   {% if results is not none %}
-    <h2 class="detail-section-title">
-      Résultats — {{ search_params.participant_name }} / {{ search_params.channel_label }}
-    </h2>
+    <div class="page-header-row">
+      <h2 class="detail-section-title" style="margin: 0;">Tests sélectionnés</h2>
+      <form method="post" action="{{ url_for('restitutions.clear_selected_tests') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-secondary btn-compact"
+                onclick="return confirm('Vider la sélection accumulée ? Les tests eux-mêmes ne sont pas supprimés.');">
+          Vider la sélection
+        </button>
+      </form>
+    </div>
     <form method="post" action="{{ url_for('restitutions.delete_selected_tests') }}" id="selected-tests-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="participant_id" value="{{ search_params.participant_id }}">
-      <input type="hidden" name="channel" value="{{ search_params.channel }}">
-      <input type="hidden" name="nb_tests" value="{{ search_params.nb_tests }}">
-      <input type="hidden" name="criteria_mode" value="{{ search_params.criteria_mode }}">
-      {% for code in search_params.codes %}
-        <input type="hidden" name="codes" value="{{ code }}">
-      {% endfor %}
 
       {% if not results %}
         <div class="upload-card">
-          <p class="muted">Aucun test ne correspond à cette sélection.</p>
+          <p class="muted">Aucun test dans la sélection.</p>
         </div>
       {% else %}
         <div class="table-card">
