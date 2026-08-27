@@ -110,53 +110,117 @@
 <dialog id="select-tests-popup" class="app-dialog">
   <h3>Nouvelle sélection de tests</h3>
   <form method="get" action="{{ url_for('restitutions.select_tests') }}" id="select-tests-form">
-    <label class="dialog-input-label">
-      Participant
-      <select name="participant_id" id="select-tests-participant" required>
-        <option value="">— Choisir —</option>
-        {% for p in participants %}
-          <option value="{{ p.id }}" data-channels="{{ participant_channels[p.id]|join(',') }}">
-            {{ p.participant_name }}{% if p.code %} ({{ p.code }}){% endif %}
-          </option>
-        {% endfor %}
-      </select>
+    <label class="dialog-input-label" style="display: flex; align-items: center; gap: 8px;">
+      <input type="radio" name="mode" value="search" checked style="width: auto;" id="select-tests-mode-search">
+      <span>Rechercher les moins bien notés</span>
     </label>
-    <label class="dialog-input-label">
-      Canal
-      <select name="channel" id="select-tests-channel" required>
-        {% for key in channel_labels %}
-          <option value="{{ key }}" id="select-tests-channel-opt-{{ key }}">{{ channel_labels[key] }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <label class="dialog-input-label">
-      Nombre de tests souhaité (1 à {{ max_tests }})
-      <input type="number" name="nb_tests" id="select-tests-nb" min="1" max="{{ max_tests }}" value="1" required>
+    <label class="dialog-input-label" style="display: flex; align-items: center; gap: 8px;">
+      <input type="radio" name="mode" value="direct" style="width: auto;" id="select-tests-mode-direct">
+      <span>Sélectionner un test précis par son numéro</span>
     </label>
 
-    <fieldset class="dialog-field">
-      <legend>Critères</legend>
-      <label class="dialog-input-label" style="display: flex; align-items: center; gap: 8px;">
-        <input type="radio" name="criteria_mode" value="tous" checked style="width: auto;" id="select-tests-criteria-tous">
-        <span>Tous les critères</span>
+    <fieldset class="dialog-field" id="select-tests-search-fields">
+      <legend>Recherche</legend>
+      <label class="dialog-input-label">
+        Participant
+        <select name="participant_id" id="select-tests-participant" required>
+          <option value="">— Choisir —</option>
+          {% for p in participants %}
+            <option value="{{ p.id }}" data-channels="{{ participant_channels[p.id]|join(',') }}">
+              {{ p.participant_name }}{% if p.code %} ({{ p.code }}){% endif %}
+            </option>
+          {% endfor %}
+        </select>
       </label>
-      <label class="dialog-input-label" style="display: flex; align-items: center; gap: 8px;">
-        <input type="radio" name="criteria_mode" value="selection" style="width: auto;" id="select-tests-criteria-selection">
-        <span>Sélection de critères</span>
+      <label class="dialog-input-label">
+        Canal
+        <select name="channel" id="select-tests-channel" required>
+          {% for key in channel_labels %}
+            <option value="{{ key }}" id="select-tests-channel-opt-{{ key }}">{{ channel_labels[key] }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="dialog-input-label">
+        Nombre de tests souhaité (1 à {{ max_tests }})
+        <input type="number" name="nb_tests" id="select-tests-nb" min="1" max="{{ max_tests }}" value="1" required>
       </label>
 
-      <div id="select-tests-criteria-blocks">
-        {% for channel, criteria in criteria_by_channel.items() %}
-          <div class="criteria-block" id="select-tests-criteria-block-{{ channel }}" style="display: none;">
-            {% for c in criteria %}
-              <label class="dialog-input-label" style="display: flex; align-items: center; gap: 8px;">
-                <input type="checkbox" name="codes" value="{{ c.code }}" class="select-tests-criteria-checkbox" data-channel="{{ channel }}" style="width: auto;">
-                <span>C{{ c.code }} — {{ c.name }}</span>
-              </label>
-            {% endfor %}
-          </div>
-        {% endfor %}
-      </div>
+      <fieldset class="dialog-field">
+        <legend>Critères</legend>
+        <label class="dialog-input-label" style="display: flex; align-items: center; gap: 8px;">
+          <input type="radio" name="criteria_mode" value="tous" checked style="width: auto;" id="select-tests-criteria-tous">
+          <span>Tous les critères</span>
+        </label>
+        <label class="dialog-input-label" style="display: flex; align-items: center; gap: 8px;">
+          <input type="radio" name="criteria_mode" value="selection" style="width: auto;" id="select-tests-criteria-selection">
+          <span>Sélection de critères</span>
+        </label>
+
+        <div id="select-tests-criteria-blocks">
+          {% for channel, criteria in criteria_by_channel.items() %}
+            <div class="criteria-block" id="select-tests-criteria-block-{{ channel }}" style="display: none;">
+              {% for c in criteria %}
+                <label class="dialog-input-label" style="display: flex; align-items: center; gap: 8px;">
+                  <input type="checkbox" name="codes" value="{{ c.code }}" class="select-tests-criteria-checkbox" data-channel="{{ channel }}" style="width: auto;">
+                  <span>C{{ c.code }} — {{ c.name }}</span>
+                </label>
+              {% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+      </fieldset>
+    </fieldset>
+
+    <fieldset class="dialog-field" id="select-tests-direct-fields" style="display: none;" disabled>
+      <legend>Numéro de test</legend>
+      <p class="muted">
+        Composez le numéro en choisissant chaque valeur — impossible de
+        saisir une catégorie, un participant, un canal ou un numéro hors
+        de ce qui existe réellement pour cette édition.
+      </p>
+      <label class="dialog-input-label">
+        Catégorie
+        <select id="select-tests-direct-category">
+          <option value="">— Choisir —</option>
+          {% for cat in categories %}
+            <option value="{{ cat.id }}">{{ cat.label() }}{% if cat.code %} ({{ cat.code }}){% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="dialog-input-label">
+        Participant
+        <select name="direct_participant_id" id="select-tests-direct-participant" required>
+          <option value="">— Choisir une catégorie d'abord —</option>
+          {% for p in participants %}
+            <option value="{{ p.id }}" data-category="{{ participant_categories[p.id] }}"
+                    data-channels="{{ participant_channels[p.id]|join(',') }}" style="display: none;">
+              {{ p.participant_name }}{% if p.code %} ({{ p.code }}){% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="dialog-input-label">
+        Canal
+        <select name="direct_channel" id="select-tests-direct-channel" required>
+          <option value="">— Choisir un participant d'abord —</option>
+          {% for key in channel_labels %}
+            <option value="{{ key }}" id="select-tests-direct-channel-opt-{{ key }}" style="display: none;">{{ channel_labels[key] }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="dialog-input-label">
+        Numéro
+        <span id="select-tests-direct-number-blocks">
+          {% for channel, (lo, hi) in channel_id_ranges.items() %}
+            <select name="direct_number" class="direct-number-block" id="select-tests-direct-number-{{ channel }}" style="display: none;">
+              <option value="">— Choisir un canal d'abord —</option>
+              {% for n in range(lo, hi + 1) %}
+                <option value="{{ n }}">{{ n }}</option>
+              {% endfor %}
+            </select>
+          {% endfor %}
+        </span>
+      </label>
     </fieldset>
 
     <div class="dialog-actions">

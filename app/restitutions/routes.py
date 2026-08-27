@@ -25,7 +25,9 @@ from pptx import Presentation
 
 from app.access_control import admin_required
 from app.extensions import db
-from app.models import Restitution, RestitutionTemplate, Participant, TestResult, TestRecord, RedactedRecord, ActionLog
+from app.models import (
+    Category, Restitution, RestitutionTemplate, Participant, TestResult, TestRecord, RedactedRecord, ActionLog,
+)
 from app.editions import get_current_edition_id, get_edition
 from app.menu import MENU_ITEMS
 from app.reports.generator import substitute_tags
@@ -35,7 +37,13 @@ from app.restitutions.debrief_visuals import apply_debrief_visuals, CRITERION_SH
 from app.restitutions.redaction import redact_pdf
 from app.results.presentation import CHANNEL_LABELS, CHANNEL_ORDER, build_test_view
 from app.results.scoring import compute_test_score, is_test_completed, CRITERIA_BY_CHANNEL
-from app.results.validation import CHANNEL_FIELD_BY_KEY
+from app.results.validation import CHANNEL_FIELD_BY_KEY, CHANNELS
+
+# {canal: (numéro mini, numéro maxi)} de la plage fixe encodée dans le
+# numéro de test (voir CHANNELS ci-dessus, autorité déjà utilisée pour
+# valider les numéros de test à l'import des résultats) — réutilisée ici
+# pour la sélection directe d'un test par son numéro complet.
+CHANNEL_ID_RANGE = {v["key"]: v["range"] for v in CHANNELS.values()}
 
 restitutions_bp = Blueprint("restitutions", __name__, url_prefix="/restitutions")
 
@@ -69,8 +77,11 @@ def _set_selection_entries(edition_id, entries_by_id):
 
 
 def _format_codes_display(codes):
-    """"Tous" si aucun critère spécifique (tous les critères du canal),
+    """"Sélection manuelle" pour un test choisi directement par son numéro,
+    "Tous" si aucun critère spécifique (tous les critères du canal),
     sinon "2, 3 et 6" (voir demande explicite de l'utilisateur)."""
+    if codes == "manuel":
+        return "Sélection manuelle"
     if not codes:
         return "Tous"
     codes = sorted(codes)
@@ -196,6 +207,44 @@ def _search_worst_tests(edition_id, args):
     return {t.id: {"note": note_20, "codes": codes} for note_20, t in scored[:nb_tests]}, None
 
 
+def _direct_test_lookup(edition_id, args):
+    """Sélectionne UN test précis par son numéro complet (catégorie +
+    participant + canal + numéro dans la plage fixe du canal — voir
+    CHANNEL_ID_RANGE), reconstitué à partir des menus déroulants plutôt que
+    saisi librement (voir demande explicite : impossible de composer un
+    numéro hors format). Aucun filtre de complétude ni de critère —
+    l'utilisateur choisit ce test précisément, pas "le pire selon...".
+
+    Retourne (entries_by_id, error) — même forme que _search_worst_tests."""
+    participant_id = args.get("direct_participant_id", "").strip()
+    channel = args.get("direct_channel", "").strip()
+    number_raw = args.get("direct_number", "").strip()
+
+    if not participant_id.isdigit() or channel not in CHANNEL_ID_RANGE:
+        return {}, "Sélection invalide : choisissez un participant et un canal."
+
+    participant = Participant.query.filter_by(id=int(participant_id), edition_id=edition_id).first()
+    if not participant:
+        return {}, "Participant introuvable pour cette édition."
+
+    lo, hi = CHANNEL_ID_RANGE[channel]
+    if not number_raw.isdigit() or not (lo <= int(number_raw) <= hi):
+        return {}, f"Numéro de test invalide pour ce canal (attendu entre {lo} et {hi})."
+
+    category_code = (participant.category.code if participant.category else "").strip()
+    participant_code = (participant.code or "").strip()
+    if not re.fullmatch(r"\d{2}", category_code) or not re.fullmatch(r"\d{2}", participant_code):
+        return {}, "Code catégorie ou participant invalide pour ce participant."
+
+    test_id_str = f"{category_code}{participant_code}{int(number_raw):04d}"
+    t = TestResult.query.filter_by(edition_id=edition_id, test_id=test_id_str, channel=channel).first()
+    if not t:
+        return {}, f"Aucun test {test_id_str} chargé pour ce participant et ce canal."
+
+    score = compute_test_score(channel, t.raw_data or {})
+    return {t.id: {"note": score["note_20"] if score else None, "codes": "manuel"}}, None
+
+
 def _load_selection_results(edition_id):
     """Reconstruit la liste affichable (voir build_test_view) de la
     sélection accumulée en session — partagée entre "Sélection des tests
@@ -225,7 +274,10 @@ def _load_selection_results(edition_id):
         still_valid[id_str] = entry
     if still_valid.keys() != entries_by_id.keys():
         _set_selection_entries(edition_id, still_valid)
-    results.sort(key=lambda v: v["note_20"])
+    # un test choisi directement par son numéro peut n'avoir aucun critère
+    # valide renseigné (note_20 = None) — placé en dernier plutôt que de
+    # faire échouer le tri (None n'est pas comparable à un nombre).
+    results.sort(key=lambda v: (v["note_20"] is None, v["note_20"]))
     return results
 
 
@@ -252,20 +304,31 @@ def select_tests():
 
     participants = Participant.query.filter_by(edition_id=edition_id).order_by(Participant.participant_name).all()
     participant_channels = {}
+    participant_categories = {}
     for p in participants:
         counts = _participant_channel_counts(edition_id, p.id)
         valid = [c for c in CHANNEL_ORDER if getattr(p, CHANNEL_FIELD_BY_KEY[c], False) and counts.get(c, 0) > 0]
         if valid:
             participant_channels[p.id] = valid
+            participant_categories[p.id] = p.category_id
     participants_with_tests = [p for p in participants if p.id in participant_channels]
+    categories = (
+        Category.query.filter_by(edition_id=edition_id)
+        .filter(Category.id.in_(set(participant_categories.values())))
+        .order_by(Category.code).all()
+    ) if participant_categories else []
 
     criteria_by_channel = {
         channel: [{"code": code, "name": CRITERION_SHORT_NAMES[channel][code]} for code in sorted(codes)]
         for channel, codes in CRITERIA_BY_CHANNEL.items()
     }
 
-    if request.args.get("participant_id"):
-        new_entries, error = _search_worst_tests(edition_id, request.args)
+    mode = request.args.get("mode", "search")
+    if request.args.get("participant_id") or request.args.get("direct_participant_id"):
+        if mode == "direct":
+            new_entries, error = _direct_test_lookup(edition_id, request.args)
+        else:
+            new_entries, error = _search_worst_tests(edition_id, request.args)
         if error:
             flash(error, "error")
         if new_entries:
@@ -282,7 +345,8 @@ def select_tests():
         "restitutions/select_tests.html", edition=edition,
         active_item=ACTIVE_ITEM_SELECT_TESTS, menu_items=MENU_ITEMS,
         has_any_test=has_any_test, participants=participants_with_tests,
-        participant_channels=participant_channels, channel_labels=CHANNEL_LABELS,
+        participant_channels=participant_channels, participant_categories=participant_categories,
+        categories=categories, channel_labels=CHANNEL_LABELS, channel_id_ranges=CHANNEL_ID_RANGE,
         criteria_by_channel=criteria_by_channel, max_tests=MAX_TESTS_REQUEST,
         results=results,
     )
