@@ -25,13 +25,14 @@ from pptx import Presentation
 
 from app.access_control import admin_required
 from app.extensions import db
-from app.models import Restitution, RestitutionTemplate, Participant, TestResult, TestRecord, ActionLog
+from app.models import Restitution, RestitutionTemplate, Participant, TestResult, TestRecord, RedactedRecord, ActionLog
 from app.editions import get_current_edition_id, get_edition
 from app.menu import MENU_ITEMS
 from app.reports.generator import substitute_tags
 from app.reports.report_cache import get_fresh_edition_cache
 from app.reports.report_data import build_participant_placeholders
 from app.restitutions.debrief_visuals import apply_debrief_visuals, CRITERION_SHORT_NAMES
+from app.restitutions.redaction import redact_pdf
 from app.results.presentation import CHANNEL_LABELS, CHANNEL_ORDER, build_test_view
 from app.results.scoring import compute_test_score, is_test_completed, CRITERIA_BY_CHANNEL
 from app.results.validation import CHANNEL_FIELD_BY_KEY
@@ -195,6 +196,39 @@ def _search_worst_tests(edition_id, args):
     return {t.id: {"note": note_20, "codes": codes} for note_20, t in scored[:nb_tests]}, None
 
 
+def _load_selection_results(edition_id):
+    """Reconstruit la liste affichable (voir build_test_view) de la
+    sélection accumulée en session — partagée entre "Sélection des tests
+    pour restitution" et "Caviarder des records", les deux pages
+    travaillant sur la MÊME sélection. Nettoie au passage les entrées dont
+    le test a été supprimé entretemps (par un autre onglet, etc.)."""
+    entries_by_id = _get_selection_entries(edition_id)
+    if not entries_by_id:
+        return []
+
+    selected_ids = [int(i) for i in entries_by_id]
+    tests_by_id = {
+        t.id: t for t in TestResult.query.filter(
+            TestResult.edition_id == edition_id, TestResult.id.in_(selected_ids)
+        ).all()
+    }
+    results = []
+    still_valid = {}
+    for id_str, entry in entries_by_id.items():
+        t = tests_by_id.get(int(id_str))
+        if t is None:
+            continue  # supprimé entretemps
+        view = build_test_view(t)
+        view["note_20"] = entry["note"]
+        view["codes_display"] = _format_codes_display(entry.get("codes"))
+        results.append(view)
+        still_valid[id_str] = entry
+    if still_valid.keys() != entries_by_id.keys():
+        _set_selection_entries(edition_id, still_valid)
+    results.sort(key=lambda v: v["note_20"])
+    return results
+
+
 @restitutions_bp.route("/selection-tests", methods=["GET"])
 @login_required
 def select_tests():
@@ -242,29 +276,7 @@ def select_tests():
         # chaque rafraîchissement de la page, et affiche l'URL "propre".
         return redirect(url_for("restitutions.select_tests"))
 
-    entries_by_id = _get_selection_entries(edition_id)
-    results = None
-    if entries_by_id:
-        selected_ids = [int(i) for i in entries_by_id]
-        tests_by_id = {
-            t.id: t for t in TestResult.query.filter(
-                TestResult.edition_id == edition_id, TestResult.id.in_(selected_ids)
-            ).all()
-        }
-        results = []
-        still_valid = {}
-        for id_str, entry in entries_by_id.items():
-            t = tests_by_id.get(int(id_str))
-            if t is None:
-                continue  # supprimé entretemps
-            view = build_test_view(t)
-            view["note_20"] = entry["note"]
-            view["codes_display"] = _format_codes_display(entry.get("codes"))
-            results.append(view)
-            still_valid[id_str] = entry
-        if still_valid.keys() != entries_by_id.keys():
-            _set_selection_entries(edition_id, still_valid)
-        results.sort(key=lambda v: v["note_20"])
+    results = _load_selection_results(edition_id) or None
 
     return render_template(
         "restitutions/select_tests.html", edition=edition,
@@ -322,17 +334,169 @@ def delete_selected_tests():
     return redirect(url_for("restitutions.select_tests"))
 
 
+def _annotate_caviardage_eligibility(results):
+    """Ajoute à chaque vue de test (voir build_test_view) : is_pdf_record
+    (éligible au caviardage — record présent et pas un fichier audio, seul
+    canal — Téléphone — dont le record n'est pas un PDF) et
+    redacted_record_id (copie déjà caviardée, s'il y en a une)."""
+    test_ids = [r["id"] for r in results]
+    redacted_by_test = {
+        rr.test_result_id: rr.id
+        for rr in RedactedRecord.query.filter(RedactedRecord.test_result_id.in_(test_ids)).all()
+    } if test_ids else {}
+    for r in results:
+        r["is_pdf_record"] = bool(r["record_id"]) and not r["record_is_audio"]
+        r["redacted_record_id"] = redacted_by_test.get(r["id"])
+    return results
+
+
 @restitutions_bp.route("/caviardage", methods=["GET"])
 @login_required
 def redact_records():
     """Caviardage des records sélectionnés avant insertion dans la
-    restitution — fonctionnalité en cours de réflexion, page en place pour
-    la navigation en attendant sa conception."""
+    restitution : reprend la MÊME sélection accumulée que « Sélection des
+    tests pour restitution » (voir _load_selection_results) — sans le
+    bouton Détail test, avec les boutons Caviarder/Supprimer agissant
+    uniquement sur les tests cochés (voir demande explicite)."""
     edition_id = get_current_edition_id()
     edition = get_edition(edition_id)
+    results = _load_selection_results(edition_id)
+    _annotate_caviardage_eligibility(results)
     return render_template(
         "restitutions/redact_records.html", edition=edition,
         active_item=ACTIVE_ITEM_REDACT_RECORDS, menu_items=MENU_ITEMS,
+        results=results,
+    )
+
+
+@restitutions_bp.route("/caviardage/redact", methods=["POST"])
+@login_required
+def redact_selected_tests():
+    """Caviarde le record de chaque test coché : duplique son contenu (le
+    TestRecord d'origine n'est jamais lu en écriture) et retire du double
+    le nom du participant (connu), les adresses e-mail (masquées, voir
+    redaction.py), et — si renseignés dans le formulaire, laissés vides
+    sinon (voir demande explicite) — le nom du testeur et celui du
+    conseiller client, aucun des deux n'existant en base sous forme
+    structurée."""
+    edition_id = get_current_edition_id()
+    test_ids = [int(i) for i in request.form.getlist("test_result_ids") if i.isdigit()]
+    if not test_ids:
+        flash("Merci de choisir au moins un test à caviarder.", "error")
+        return redirect(url_for("restitutions.redact_records"))
+
+    tests = TestResult.query.filter(TestResult.edition_id == edition_id, TestResult.id.in_(test_ids)).all()
+
+    redacted, skipped_no_record, skipped_not_pdf = [], [], []
+    for t in tests:
+        record = t.record
+        if record is None:
+            skipped_no_record.append(t.test_id)
+            continue
+        if record.is_audio:
+            skipped_not_pdf.append(t.test_id)
+            continue
+
+        participant_name = t.participant.participant_name if t.participant else None
+        tester_name = request.form.get(f"tester_name_{t.id}", "").strip() or None
+        advisor_name = request.form.get(f"advisor_name_{t.id}", "").strip() or None
+
+        try:
+            redacted_bytes = redact_pdf(
+                record.file_data, participant_name=participant_name,
+                tester_name=tester_name, advisor_name=advisor_name,
+            )
+        except Exception:
+            current_app.logger.exception("Échec du caviardage du record du test %s", t.test_id)
+            skipped_not_pdf.append(t.test_id)
+            continue
+
+        filename = re.sub(
+            r"\.pdf$", "_caviarde.pdf", record.filename or f"{t.test_id}-record.pdf", flags=re.IGNORECASE
+        )
+        existing = RedactedRecord.query.filter_by(test_result_id=t.id).first()
+        if existing:
+            existing.filename = filename
+            existing.content_type = "application/pdf"
+            existing.file_data = redacted_bytes
+            existing.file_size = len(redacted_bytes)
+            existing.created_by_id = current_user.id
+        else:
+            db.session.add(RedactedRecord(
+                test_result_id=t.id, filename=filename, content_type="application/pdf",
+                file_data=redacted_bytes, file_size=len(redacted_bytes), created_by_id=current_user.id,
+            ))
+        redacted.append(t.test_id)
+
+    db.session.commit()
+
+    if redacted:
+        _log(
+            "Caviardage de record(s)",
+            details=f"{len(redacted)} test(s) (édition {edition_id}) : {', '.join(redacted)}",
+        )
+        flash(f"{len(redacted)} record(s) caviardé(s) : {', '.join(redacted)}.", "success")
+    if skipped_no_record:
+        flash("Impossible de caviarder (aucun record) : " + ", ".join(skipped_no_record) + ".", "error")
+    if skipped_not_pdf:
+        flash(
+            "Impossible de caviarder (record audio — seuls les PDF sont pris en charge pour l'instant) : "
+            + ", ".join(skipped_not_pdf) + ".",
+            "error",
+        )
+
+    return redirect(url_for("restitutions.redact_records"))
+
+
+@restitutions_bp.route("/caviardage/delete", methods=["POST"])
+@login_required
+def delete_caviardage_tests():
+    """Retire les tests cochés de la sélection (partagée avec « Sélection
+    des tests pour restitution ») et supprime leur copie caviardée si elle
+    existe — ne touche JAMAIS au TestResult ni à son TestRecord d'origine
+    (voir demande explicite de l'utilisateur)."""
+    edition_id = get_current_edition_id()
+    test_ids = [int(i) for i in request.form.getlist("test_result_ids") if i.isdigit()]
+    if not test_ids:
+        flash("Merci de choisir au moins un test à supprimer.", "error")
+        return redirect(url_for("restitutions.redact_records"))
+
+    deleted_redacted = RedactedRecord.query.filter(RedactedRecord.test_result_id.in_(test_ids)).delete(
+        synchronize_session=False
+    )
+    db.session.commit()
+
+    entries_by_id = _get_selection_entries(edition_id)
+    remaining = {k: v for k, v in entries_by_id.items() if int(k) not in test_ids}
+    if remaining.keys() != entries_by_id.keys():
+        _set_selection_entries(edition_id, remaining)
+
+    _log(
+        "Retrait de test(s) de la sélection restitution",
+        details=(
+            f"{len(test_ids)} test(s) retiré(s) de la sélection, "
+            f"{deleted_redacted} copie(s) caviardée(s) supprimée(s) (édition {edition_id})"
+        ),
+    )
+    flash(f"{len(test_ids)} test(s) retiré(s) de la sélection.", "success")
+    return redirect(url_for("restitutions.redact_records"))
+
+
+@restitutions_bp.route("/redacted/<int:redacted_id>/download", methods=["GET"])
+@login_required
+def download_redacted_record(redacted_id):
+    edition_id = get_current_edition_id()
+    record = (
+        RedactedRecord.query.join(TestResult)
+        .filter(RedactedRecord.id == redacted_id, TestResult.edition_id == edition_id)
+        .first()
+    )
+    if not record:
+        return "Record caviardé introuvable pour cette édition.", 404
+
+    return send_file(
+        io.BytesIO(record.file_data), mimetype=record.content_type or "application/pdf",
+        as_attachment=False, download_name=record.filename,
     )
 
 

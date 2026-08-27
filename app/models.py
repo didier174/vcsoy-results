@@ -291,6 +291,34 @@ class TestRecord(db.Model):
         return bool(self.content_type) and self.content_type.startswith("audio/")
 
 
+class RedactedRecord(db.Model):
+    """
+    Copie caviardée d'un TestRecord (PDF uniquement pour l'instant) créée
+    par « Caviarder des records » : le nom du participant, les adresses
+    e-mail (ne laissant que la première lettre, l'arobase et l'extension)
+    et, si renseignés par l'utilisateur, le nom du testeur et celui du
+    conseiller client sont retirés du contenu du PDF — jamais du
+    TestRecord original, qui n'est ni lu en écriture ni modifié.
+
+    Un seul exemplaire caviardé par test : relancer le caviardage remplace
+    la copie existante plutôt que d'en créer une seconde.
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    test_result_id = db.Column(db.Integer, db.ForeignKey("test_result.id"), nullable=False, unique=True)
+
+    filename = db.Column(db.String(255))
+    content_type = db.Column(db.String(100))
+    file_data = db.Column(db.LargeBinary, nullable=False)
+    file_size = db.Column(db.Integer)
+
+    created_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    test_result = db.relationship("TestResult", backref=db.backref("redacted_record", uselist=False))
+    created_by = db.relationship("User")
+
+
 class ReportTemplate(db.Model):
     """
     Un modèle de rapport chargé pour « Rapport d'étude » : le fichier de

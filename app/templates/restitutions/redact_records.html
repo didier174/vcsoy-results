@@ -5,9 +5,113 @@
   <p class="page-subtitle">Édition : {{ edition.short_label }}</p>
 
   <p class="muted">
-    Cette page permettra de caviarder les records sélectionnés (audio/PDF)
-    avant leur insertion dans la restitution. Fonctionnalité en cours de
-    conception — page en place pour la navigation en attendant.
+    Reprend la sélection de tests composée dans « Sélection des tests pour
+    restitution ». Caviarder un record en fait une copie (l'original n'est
+    jamais modifié) où sont retirés le nom du participant, les adresses
+    e-mail (seule la première lettre, l'arobase et l'extension restent
+    lisibles) et, si vous les renseignez, le nom du testeur et celui du
+    conseiller client. Seuls les records PDF peuvent être caviardés pour
+    l'instant (pas les enregistrements audio du canal Téléphone).
   </p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-list">
+        {% for category, message in messages %}
+          <p class="flash {{ 'flash-error' if category == 'error' else 'flash-success' }}">{{ message }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  {% if not results %}
+    <div class="upload-card">
+      <p class="muted">
+        Aucun test dans la sélection — composez-la d'abord dans
+        <a href="{{ url_for('restitutions.select_tests') }}">Sélection des tests pour restitution</a>.
+      </p>
+    </div>
+  {% else %}
+    <div class="table-card">
+      <div class="table-row table-header">
+        <div class="col col-check"></div>
+        <div class="col">Numéro de test</div>
+        <div class="col">Participant</div>
+        <div class="col">Canal</div>
+        <div class="col">Note</div>
+        <div class="col">Critères</div>
+        <div class="col col-report-dl"></div>
+      </div>
+      {% for test in results %}
+        <div class="table-row">
+          <div class="col col-check">
+            <input type="checkbox" name="test_result_ids" value="{{ test.id }}" class="caviardage-checkbox"
+                   data-test-id="{{ test.id }}" data-test-number="{{ test.test_id }}"
+                   data-eligible="{{ 'true' if test.is_pdf_record else 'false' }}"
+                   data-has-record="{{ 'true' if test.record_id else 'false' }}"
+                   form="caviardage-actions-form">
+          </div>
+          <div class="col">{{ test.test_id }}</div>
+          <div class="col">{{ test.participant_name }}</div>
+          <div class="col">{{ test.channel_label }}</div>
+          <div class="col">{{ "%.2f"|format(test.note_20)|replace(".", ",") }}</div>
+          <div class="col">{{ test.codes_display }}</div>
+          <div class="col col-report-dl">
+            {% if test.redacted_record_id %}
+              <a href="{{ url_for('restitutions.download_redacted_record', redacted_id=test.redacted_record_id) }}"
+                 class="btn btn-secondary btn-compact" target="_blank" rel="noopener">
+                Télécharger le record caviardé
+              </a>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <form method="post" id="caviardage-actions-form" data-delete-url="{{ url_for('restitutions.delete_caviardage_tests') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    </form>
+
+    <div class="actions">
+      <button type="button" class="btn btn-primary" id="caviardage-redact-btn" disabled>
+        Caviarder
+      </button>
+      <button type="button" class="btn btn-secondary" id="caviardage-delete-btn" disabled
+              onclick="return submitCaviardageDelete();">
+        Supprimer
+      </button>
+    </div>
+  {% endif %}
 </div>
+
+<!-- Popup : nom du testeur / conseiller à caviarder, une section par test coché -->
+<dialog id="caviardage-names-popup" class="app-dialog">
+  <h3>Nom(s) à caviarder</h3>
+  <p class="muted">
+    Laissez un champ vide pour ne pas caviarder cette information sur ce test.
+  </p>
+  <form method="post" action="{{ url_for('restitutions.redact_selected_tests') }}" id="caviardage-names-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for test in results %}
+      <fieldset class="dialog-field caviardage-name-block" id="caviardage-name-block-{{ test.id }}" style="display: none;">
+        <legend>Test {{ test.test_id }} — {{ test.participant_name }} ({{ test.channel_label }})</legend>
+        <input type="hidden" name="test_result_ids" value="{{ test.id }}" class="caviardage-name-block-input">
+        <label class="dialog-input-label">
+          Nom et prénom du testeur
+          <input type="text" name="tester_name_{{ test.id }}">
+        </label>
+        <label class="dialog-input-label">
+          Nom et prénom du conseiller client
+          <input type="text" name="advisor_name_{{ test.id }}">
+        </label>
+      </fieldset>
+    {% endfor %}
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Annuler</button>
+      <button type="submit" class="btn btn-primary">Caviarder</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="{{ url_for('static', filename='js/caviardage.js') }}"></script>
 {% endblock %}
