@@ -54,15 +54,28 @@ MAX_TESTS_REQUEST = 5
 SELECTION_SESSION_KEY = "restitution_test_selection"
 
 
-def _get_selection_notes(edition_id):
+def _get_selection_entries(edition_id):
+    """{test_id (str): {"note": float, "codes": [int]|None}} — codes=None
+    signifie "tous les critères du canal"."""
     data = session.get(SELECTION_SESSION_KEY)
     if not data or data.get("edition_id") != edition_id:
         return {}
-    return data.get("notes_by_id", {})
+    return data.get("entries_by_id", {})
 
 
-def _set_selection_notes(edition_id, notes_by_id):
-    session[SELECTION_SESSION_KEY] = {"edition_id": edition_id, "notes_by_id": notes_by_id}
+def _set_selection_entries(edition_id, entries_by_id):
+    session[SELECTION_SESSION_KEY] = {"edition_id": edition_id, "entries_by_id": entries_by_id}
+
+
+def _format_codes_display(codes):
+    """"Tous" si aucun critère spécifique (tous les critères du canal),
+    sinon "2, 3 et 6" (voir demande explicite de l'utilisateur)."""
+    if not codes:
+        return "Tous"
+    codes = sorted(codes)
+    if len(codes) == 1:
+        return str(codes[0])
+    return ", ".join(str(c) for c in codes[:-1]) + " et " + str(codes[-1])
 
 RESTITUTION_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
@@ -129,11 +142,12 @@ def _search_worst_tests(edition_id, args):
     complets (QS completed) les moins bien notés — sur tous les critères
     du canal, ou seulement sur la sélection de critères demandée.
 
-    Retourne (notes_by_id, error) : `notes_by_id` est un dict {test_id:
-    note_20} des tests trouvés (destiné à être fusionné dans la sélection
-    accumulée en session, pas affiché directement) ; `error` est un
-    message à afficher si la sélection est invalide ou si aucun test ne
-    correspond."""
+    Retourne (entries_by_id, error) : `entries_by_id` est un dict
+    {test_id: {"note": note_20, "codes": codes}} des tests trouvés
+    (destiné à être fusionné dans la sélection accumulée en session, pas
+    affiché directement — `codes` est None si "tous les critères" a été
+    demandé) ; `error` est un message à afficher si la sélection est
+    invalide ou si aucun test ne correspond."""
     participant_id = args.get("participant_id", "").strip()
     channel = args.get("channel", "").strip()
     nb_tests_raw = args.get("nb_tests", "").strip()
@@ -178,7 +192,7 @@ def _search_worst_tests(edition_id, args):
         )
 
     scored.sort(key=lambda pair: pair[0])
-    return {t.id: note_20 for note_20, t in scored[:nb_tests]}, None
+    return {t.id: {"note": note_20, "codes": codes} for note_20, t in scored[:nb_tests]}, None
 
 
 @restitutions_bp.route("/selection-tests", methods=["GET"])
@@ -217,21 +231,21 @@ def select_tests():
     }
 
     if request.args.get("participant_id"):
-        new_notes, error = _search_worst_tests(edition_id, request.args)
+        new_entries, error = _search_worst_tests(edition_id, request.args)
         if error:
             flash(error, "error")
-        if new_notes:
-            notes_by_id = _get_selection_notes(edition_id)
-            notes_by_id.update({str(tid): note for tid, note in new_notes.items()})
-            _set_selection_notes(edition_id, notes_by_id)
+        if new_entries:
+            entries_by_id = _get_selection_entries(edition_id)
+            entries_by_id.update({str(tid): entry for tid, entry in new_entries.items()})
+            _set_selection_entries(edition_id, entries_by_id)
         # redirection (PRG) : évite de relancer la même recherche à
         # chaque rafraîchissement de la page, et affiche l'URL "propre".
         return redirect(url_for("restitutions.select_tests"))
 
-    notes_by_id = _get_selection_notes(edition_id)
+    entries_by_id = _get_selection_entries(edition_id)
     results = None
-    if notes_by_id:
-        selected_ids = [int(i) for i in notes_by_id]
+    if entries_by_id:
+        selected_ids = [int(i) for i in entries_by_id]
         tests_by_id = {
             t.id: t for t in TestResult.query.filter(
                 TestResult.edition_id == edition_id, TestResult.id.in_(selected_ids)
@@ -239,16 +253,17 @@ def select_tests():
         }
         results = []
         still_valid = {}
-        for id_str, note in notes_by_id.items():
+        for id_str, entry in entries_by_id.items():
             t = tests_by_id.get(int(id_str))
             if t is None:
                 continue  # supprimé entretemps
             view = build_test_view(t)
-            view["note_20"] = note
+            view["note_20"] = entry["note"]
+            view["codes_display"] = _format_codes_display(entry.get("codes"))
             results.append(view)
-            still_valid[id_str] = note
-        if still_valid.keys() != notes_by_id.keys():
-            _set_selection_notes(edition_id, still_valid)
+            still_valid[id_str] = entry
+        if still_valid.keys() != entries_by_id.keys():
+            _set_selection_entries(edition_id, still_valid)
         results.sort(key=lambda v: v["note_20"])
 
     return render_template(
@@ -267,7 +282,7 @@ def clear_selected_tests():
     """Vide la sélection accumulée (sans toucher aux tests en base — voir
     delete_selected_tests pour la suppression définitive)."""
     edition_id = get_current_edition_id()
-    _set_selection_notes(edition_id, {})
+    _set_selection_entries(edition_id, {})
     flash("Sélection réinitialisée.", "success")
     return redirect(url_for("restitutions.select_tests"))
 
@@ -296,10 +311,10 @@ def delete_selected_tests():
         )
         db.session.commit()
 
-        notes_by_id = _get_selection_notes(edition_id)
-        remaining = {k: v for k, v in notes_by_id.items() if int(k) not in ids}
-        if remaining.keys() != notes_by_id.keys():
-            _set_selection_notes(edition_id, remaining)
+        entries_by_id = _get_selection_entries(edition_id)
+        remaining = {k: v for k, v in entries_by_id.items() if int(k) not in ids}
+        if remaining.keys() != entries_by_id.keys():
+            _set_selection_entries(edition_id, remaining)
 
         _log("Suppression de test(s) (sélection restitution)", details=f"{deleted} supprimé(s) (édition {edition_id})")
         flash(f"{deleted} test(s) supprimé(s).", "success")

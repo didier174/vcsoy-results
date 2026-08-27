@@ -63,6 +63,7 @@
             <div class="col">Participant</div>
             <div class="col">Canal</div>
             <div class="col">Note</div>
+            <div class="col">Critères</div>
             <div class="col col-report-dl"></div>
           </div>
           {% for test in results %}
@@ -75,6 +76,7 @@
               <div class="col">{{ test.participant_name }}</div>
               <div class="col">{{ test.channel_label }}</div>
               <div class="col">{{ "%.2f"|format(test.note_20)|replace(".", ",") }}</div>
+              <div class="col">{{ test.codes_display }}</div>
               <div class="col col-report-dl">
                 {% if test.record_id %}
                   <a href="{{ url_for('records.download_record', record_id=test.record_id) }}"
