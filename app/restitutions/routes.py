@@ -39,7 +39,7 @@ from app.results.validation import CHANNEL_FIELD_BY_KEY
 restitutions_bp = Blueprint("restitutions", __name__, url_prefix="/restitutions")
 
 ACTIVE_ITEM = "Restitution"
-ACTIVE_ITEM_SELECT_TESTS = "Selection test pour restitution"
+ACTIVE_ITEM_SELECT_TESTS = "Sélection des tests pour restitution"
 ACTIVE_ITEM_REDACT_RECORDS = "Caviarder des records"
 
 MAX_TESTS_REQUEST = 5

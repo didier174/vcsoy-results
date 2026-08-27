@@ -44,8 +44,8 @@
           <a href="{{ url_for('reports.list_reports') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
         {% elif item == "Restitution" %}
           <a href="{{ url_for('restitutions.list_restitutions') }}" class="menu-item {{ 'active' if item == active_item else '' }}">{{ item }}</a>
-          {% if active_item in ["Restitution", "Selection test pour restitution", "Caviarder des records"] %}
-            <a href="{{ url_for('restitutions.select_tests') }}" class="menu-item menu-subitem {{ 'active' if active_item == 'Selection test pour restitution' else '' }}">Selection test pour restitution</a>
+          {% if active_item in ["Restitution", "Sélection des tests pour restitution", "Caviarder des records"] %}
+            <a href="{{ url_for('restitutions.select_tests') }}" class="menu-item menu-subitem {{ 'active' if active_item == 'Sélection des tests pour restitution' else '' }}">Sélection des tests pour restitution</a>
             <a href="{{ url_for('restitutions.redact_records') }}" class="menu-item menu-subitem {{ 'active' if active_item == 'Caviarder des records' else '' }}">Caviarder des records</a>
           {% endif %}
         {% elif item == "Administration" %}
