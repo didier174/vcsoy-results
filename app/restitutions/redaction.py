@@ -172,8 +172,29 @@ def _ocr_worker(img, result_queue):
     après page peut accumuler assez de mémoire (modèles + images) pour
     dépasser la limite et faire tuer toute l'instance. Un processus qui
     se termine complètement après chaque page rend systématiquement sa
-    mémoire à l'OS entre deux pages."""
+    mémoire à l'OS entre deux pages.
+
+    onnxruntime et OpenCV allouent par défaut UN THREAD PAR CŒUR
+    disponible, chacun avec ses propres tampons — sur un serveur à
+    plusieurs cœurs, ça peut consommer nettement plus de mémoire que
+    sur un poste de développement à moins de cœurs actifs. On force ici
+    un seul thread pour chacun (léger surcoût de temps, sans commune
+    mesure avec l'enjeu de stabilité du serveur)."""
     try:
+        import cv2
+        cv2.setNumThreads(1)
+
+        import onnxruntime as ort
+        _base_session_options = ort.SessionOptions
+
+        class _SingleThreadSessionOptions(_base_session_options):
+            def __init__(self):
+                super().__init__()
+                self.intra_op_num_threads = 1
+                self.inter_op_num_threads = 1
+
+        ort.SessionOptions = _SingleThreadSessionOptions
+
         from rapidocr_onnxruntime import RapidOCR
         result, _elapse = RapidOCR()(img)
     except Exception:
