@@ -193,7 +193,7 @@
           <option value="">— Choisir une catégorie d'abord —</option>
           {% for p in participants %}
             <option value="{{ p.id }}" data-category="{{ participant_categories[p.id] }}"
-                    data-channels="{{ participant_channels[p.id]|join(',') }}" style="display: none;">
+                    data-channels="{{ participant_channels[p.id]|join(',') }}">
               {{ p.participant_name }}{% if p.code %} ({{ p.code }}){% endif %}
             </option>
           {% endfor %}
@@ -204,7 +204,7 @@
         <select name="direct_channel" id="select-tests-direct-channel" required>
           <option value="">— Choisir un participant d'abord —</option>
           {% for key in channel_labels %}
-            <option value="{{ key }}" id="select-tests-direct-channel-opt-{{ key }}" style="display: none;">{{ channel_labels[key] }}</option>
+            <option value="{{ key }}" id="select-tests-direct-channel-opt-{{ key }}">{{ channel_labels[key] }}</option>
           {% endfor %}
         </select>
       </label>
@@ -213,7 +213,7 @@
         <span id="select-tests-direct-number-blocks">
           {% for channel, (lo, hi) in channel_id_ranges.items() %}
             <select name="direct_number" class="direct-number-block" id="select-tests-direct-number-{{ channel }}" style="display: none;">
-              <option value="">— Choisir un canal d'abord —</option>
+              <option value="">— Choisir —</option>
               {% for n in range(lo, hi + 1) %}
                 <option value="{{ n }}">{{ n }}</option>
               {% endfor %}
