@@ -463,6 +463,7 @@ def redact_selected_tests():
     tests = TestResult.query.filter(TestResult.edition_id == edition_id, TestResult.id.in_(test_ids)).all()
 
     redacted, skipped_no_record, skipped_not_pdf = [], [], []
+    tester_not_found, advisor_not_found = [], []
     for t in tests:
         record = t.record
         if record is None:
@@ -477,7 +478,7 @@ def redact_selected_tests():
         advisor_name = request.form.get(f"advisor_name_{t.id}", "").strip() or None
 
         try:
-            redacted_bytes = redact_pdf(
+            redacted_bytes, not_found = redact_pdf(
                 record.file_data, participant_name=participant_name,
                 tester_name=tester_name, advisor_name=advisor_name,
             )
@@ -485,6 +486,10 @@ def redact_selected_tests():
             current_app.logger.exception("Échec du caviardage du record du test %s", t.test_id)
             skipped_not_pdf.append(t.test_id)
             continue
+        if not_found.get("testeur"):
+            tester_not_found.append(t.test_id)
+        if not_found.get("conseiller"):
+            advisor_not_found.append(t.test_id)
 
         filename = re.sub(
             r"\.pdf$", "_caviarde.pdf", record.filename or f"{t.test_id}-record.pdf", flags=re.IGNORECASE
@@ -519,6 +524,18 @@ def redact_selected_tests():
             + ", ".join(skipped_not_pdf) + ".",
             "error",
         )
+    if tester_not_found:
+        flash(
+            "Nom du testeur introuvable dans le record (vérifiez l'orthographe, ou le PDF ne contient peut-être "
+            "pas de texte sélectionnable) — non caviardé pour : " + ", ".join(tester_not_found) + ".",
+            "error",
+        )
+    if advisor_not_found:
+        flash(
+            "Nom du conseiller client introuvable dans le record (vérifiez l'orthographe, ou le PDF ne contient "
+            "peut-être pas de texte sélectionnable) — non caviardé pour : " + ", ".join(advisor_not_found) + ".",
+            "error",
+        )
 
     return redirect(url_for("restitutions.redact_records"))
 
@@ -526,14 +543,16 @@ def redact_selected_tests():
 @restitutions_bp.route("/caviardage/delete", methods=["POST"])
 @login_required
 def delete_caviardage_tests():
-    """Retire les tests cochés de la sélection (partagée avec « Sélection
-    des tests pour restitution ») et supprime leur copie caviardée si elle
-    existe — ne touche JAMAIS au TestResult ni à son TestRecord d'origine
-    (voir demande explicite de l'utilisateur)."""
+    """Supprime la copie caviardée des tests cochés — le test lui-même
+    RESTE dans la sélection (partagée avec « Sélection des tests pour
+    restitution »), réaffiché comme avant la demande de caviardage (voir
+    demande explicite de l'utilisateur : ce bouton ne doit pas retirer le
+    test de la sélection, seulement sa copie caviardée). Ne touche jamais
+    au TestResult ni à son TestRecord d'origine."""
     edition_id = get_current_edition_id()
     test_ids = [int(i) for i in request.form.getlist("test_result_ids") if i.isdigit()]
     if not test_ids:
-        flash("Merci de choisir au moins un test à supprimer.", "error")
+        flash("Merci de choisir au moins un test dont retirer la copie caviardée.", "error")
         return redirect(url_for("restitutions.redact_records"))
 
     deleted_redacted = RedactedRecord.query.filter(RedactedRecord.test_result_id.in_(test_ids)).delete(
@@ -541,19 +560,17 @@ def delete_caviardage_tests():
     )
     db.session.commit()
 
-    entries_by_id = _get_selection_entries(edition_id)
-    remaining = {k: v for k, v in entries_by_id.items() if int(k) not in test_ids}
-    if remaining.keys() != entries_by_id.keys():
-        _set_selection_entries(edition_id, remaining)
-
     _log(
-        "Retrait de test(s) de la sélection restitution",
-        details=(
-            f"{len(test_ids)} test(s) retiré(s) de la sélection, "
-            f"{deleted_redacted} copie(s) caviardée(s) supprimée(s) (édition {edition_id})"
-        ),
+        "Suppression de copie(s) caviardée(s)",
+        details=f"{deleted_redacted} copie(s) supprimée(s) sur {len(test_ids)} test(s) sélectionné(s) (édition {edition_id})",
     )
-    flash(f"{len(test_ids)} test(s) retiré(s) de la sélection.", "success")
+    if deleted_redacted == 0:
+        flash("Aucune copie caviardée à supprimer pour le(s) test(s) coché(s).", "error")
+    else:
+        flash(
+            f"{deleted_redacted} copie(s) caviardée(s) supprimée(s) — le(s) test(s) reste(nt) dans la sélection.",
+            "success",
+        )
     return redirect(url_for("restitutions.redact_records"))
 
 

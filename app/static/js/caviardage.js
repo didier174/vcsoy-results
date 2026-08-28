@@ -30,7 +30,7 @@ _updateCaviardageButtons();
 // vers la bonne action et de le soumettre.
 function submitCaviardageDelete() {
   if (_checkedCaviardageBoxes().length === 0) return false;
-  if (!confirm("Retirer le(s) test(s) coché(s) de la sélection ? Leur copie caviardée, si elle existe, sera supprimée (jamais le record d'origine).")) {
+  if (!confirm("Supprimer la copie caviardée du/des test(s) coché(s) ? Le(s) test(s) reste(nt) dans la sélection, prêt(s) à être caviardé(s) à nouveau (le record d'origine n'est jamais modifié).")) {
     return false;
   }
   const form = document.getElementById("caviardage-actions-form");
