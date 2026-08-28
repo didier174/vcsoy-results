@@ -57,12 +57,10 @@ MASK_FONTSIZE = 8
 # sur un vrai record avant de fixer cette valeur. Coût : ~2-3s/page.
 OCR_ZOOM = 3.0
 
-# Budget total accordé au processus OCR pour TOUT le document avant
-# qu'on abandonne les pages restantes (traitées comme "rien trouvé" —
-# voir _ocr_images). Un budget global plutôt que par page : sinon, un
-# document de plusieurs pages qui plante sur chacune pourrait dépasser
-# le timeout gunicorn (voir render.yaml) en cumulant page après page.
-OCR_TOTAL_TIMEOUT = 90
+# Délai maximal accordé au processus OCR d'UNE page (un processus par
+# page, voir _ocr_image) avant qu'on abandonne cette page (traitée
+# comme "rien trouvé").
+OCR_TOTAL_TIMEOUT = 45
 # Granularité de sondage de la file de résultats — courte pour détecter
 # un processus mort presque immédiatement plutôt que d'attendre le
 # budget entier (voir _ocr_images).
@@ -165,57 +163,50 @@ def _render_page_for_ocr(page):
     return _pixmap_to_array(page.get_pixmap(matrix=pymupdf.Matrix(OCR_ZOOM, OCR_ZOOM)))
 
 
-def _ocr_worker(images, result_queue):
-    """Exécuté dans un PROCESSUS SÉPARÉ (voir _ocr_images) : un crash
-    natif du moteur OCR ne tue alors que ce processus, jamais le worker
-    web. Pousse chaque résultat au fil de l'eau (pas tout à la fin) pour
-    que les pages déjà traitées avant un plantage éventuel ne soient pas
-    perdues."""
+def _ocr_worker(img, result_queue):
+    """Exécuté dans un PROCESSUS SÉPARÉ, un par page (voir _ocr_image) :
+    un crash natif du moteur OCR ne tue alors que ce processus, jamais le
+    worker web. Un processus PAR PAGE plutôt qu'un seul pour tout le
+    document — mesuré sur un vrai record : sur un serveur à mémoire
+    limitée, un unique processus qui charge le moteur puis traite page
+    après page peut accumuler assez de mémoire (modèles + images) pour
+    dépasser la limite et faire tuer toute l'instance. Un processus qui
+    se termine complètement après chaque page rend systématiquement sa
+    mémoire à l'OS entre deux pages."""
     try:
         from rapidocr_onnxruntime import RapidOCR
-        ocr = RapidOCR()
+        result, _elapse = RapidOCR()(img)
     except Exception:
-        return
-    for idx, img in enumerate(images):
-        try:
-            result, _elapse = ocr(img)
-        except Exception:
-            result = None
-        result_queue.put((idx, result))
+        result = None
+    result_queue.put(result)
 
 
-def _ocr_images(images):
-    """Reconnaissance de texte sur une liste d'images de page (une par
-    page du document), isolée dans un processus séparé. Retourne une
-    liste de même longueur — None pour une page dont l'OCR a échoué,
-    planté ou n'a pas pu être traitée dans le budget global (voir
-    OCR_TOTAL_TIMEOUT) ; le reste du caviardage de cette page (texte
+def _ocr_image(img):
+    """Reconnaissance de texte sur UNE image de page, isolée dans son
+    propre processus (voir _ocr_worker). Retourne None si l'OCR a
+    échoué, planté ou n'a pas répondu dans le budget (voir
+    OCR_TOTAL_TIMEOUT) — le reste du caviardage de cette page (texte
     natif) n'est jamais perdu pour autant.
 
     Sonde la file par petits intervalles (OCR_POLL_INTERVAL) plutôt que
     d'attendre un long timeout d'un coup : un processus mort (plantage)
-    est ainsi détecté quasi immédiatement, au lieu d'immobiliser la
-    requête jusqu'au bout du délai pour CHAQUE page restante."""
-    if not images:
-        return []
+    est ainsi détecté quasi immédiatement plutôt que d'immobiliser la
+    requête jusqu'au bout du délai."""
     ctx = get_context("spawn")
     result_queue = ctx.Queue()
-    proc = ctx.Process(target=_ocr_worker, args=(images, result_queue), daemon=True)
+    proc = ctx.Process(target=_ocr_worker, args=(img, result_queue), daemon=True)
     proc.start()
     try:
-        results = [None] * len(images)
-        received = 0
+        result = None
         deadline = time.monotonic() + OCR_TOTAL_TIMEOUT
-        while received < len(images) and time.monotonic() < deadline:
+        while time.monotonic() < deadline:
             try:
-                idx, result = result_queue.get(timeout=OCR_POLL_INTERVAL)
+                result = result_queue.get(timeout=OCR_POLL_INTERVAL)
+                break
             except Exception:
                 if not proc.is_alive():
                     break  # processus mort : rien de plus à en attendre
-                continue
-            results[idx] = result
-            received += 1
-        return results
+        return result
     finally:
         proc.join(timeout=5)
         if proc.is_alive():
@@ -312,14 +303,7 @@ def redact_pdf(file_data, participant_name=None, tester_name=None, advisor_name=
 
     doc = pymupdf.open(stream=file_data, filetype="pdf")
     try:
-        # Rendu de chaque page en image AVANT toute modification : l'OCR
-        # tourne dans un processus séparé (voir _ocr_images) et a donc
-        # besoin d'images déjà prêtes, pas des objets `page` eux-mêmes
-        # (non transmissibles à un autre processus).
-        page_images = [_render_page_for_ocr(page) for page in doc]
-        ocr_results = _ocr_images(page_images)
-
-        for page, ocr_result in zip(doc, ocr_results):
+        for page in doc:
             page_text = page.get_text()
             for field, terms in terms_by_field.items():
                 for term in terms:
@@ -336,7 +320,10 @@ def redact_pdf(file_data, participant_name=None, tester_name=None, advisor_name=
 
             # Texte présent UNIQUEMENT dans une image (capture d'écran) :
             # la couche de texte ci-dessus ne peut rien y trouver — OCR en
-            # complément (voir module docstring).
+            # complément (module docstring). Rendu ET OCR de la page ICI,
+            # une à la fois (jamais toutes les pages du document en
+            # mémoire à la fois — voir _ocr_worker).
+            ocr_result = _ocr_image(_render_page_for_ocr(page))
             if ocr_result:
                 lines = _ocr_result_to_lines(page, ocr_result)
                 _ocr_blackout(page, lines, terms_by_field, found_by_field)
