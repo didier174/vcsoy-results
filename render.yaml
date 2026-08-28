@@ -3,15 +3,7 @@ services:
     name: vcsoy-results
     env: python
     plan: free
-    # opencv-python (dépendance de rapidocr-onnxruntime, pour le
-    # caviardage OCR) tire une variante avec bindings GUI qui échoue à
-    # l'import sur un conteneur Linux headless (libGL.so.1 manquant) — on
-    # la remplace après coup par opencv-python-headless, fonctionnellement
-    # identique pour notre usage (pas d'affichage). Passer directement
-    # opencv-python-headless dans requirements.txt ne suffit pas : pip
-    # installerait quand même l'autre en tant que dépendance de rapidocr,
-    # dans un ordre non garanti.
-    buildCommand: "pip install -r requirements.txt && pip uninstall -y opencv-python && pip install opencv-python-headless"
+    buildCommand: "pip install -r requirements.txt"
     # --timeout 120 : marge de sécurité pour les opérations synchrones les
     # plus lourdes (validation de gros fichiers Excel, génération de
     # rapports PPTX). La génération de scénarios par IA tourne en
