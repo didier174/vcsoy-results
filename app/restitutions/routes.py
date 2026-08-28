@@ -19,14 +19,15 @@ import io
 import mimetypes
 import re
 
-from flask import Blueprint, current_app, render_template, request, redirect, url_for, flash, send_file, session
+from flask import Blueprint, current_app, render_template, request, redirect, url_for, flash, send_file
 from flask_login import login_required, current_user
 from pptx import Presentation
 
 from app.access_control import admin_required
 from app.extensions import db
 from app.models import (
-    Category, Restitution, RestitutionTemplate, Participant, TestResult, TestRecord, RedactedRecord, ActionLog,
+    Category, Restitution, RestitutionTemplate, Participant, TestResult, TestRecord, RedactedRecord,
+    RestitutionTestSelection, ActionLog,
 )
 from app.editions import get_current_edition_id, get_edition
 from app.menu import MENU_ITEMS
@@ -54,26 +55,36 @@ ACTIVE_ITEM_REDACT_RECORDS = "Caviarder des records"
 MAX_TESTS_REQUEST = 5
 
 # Accumule les tests trouvés au fil de PLUSIEURS recherches (canaux/critères
-# différents) dans la session de l'utilisateur, pour qu'ils restent affichés
-# tant qu'ils ne sont pas explicitement supprimés ou la sélection vidée —
-# une nouvelle recherche s'AJOUTE à la liste au lieu de la remplacer (voir
-# demande explicite de l'utilisateur : "tu ne conserves pas affichée la
-# liste des tests sélectionnés"). Portée par édition (clé "edition_id"),
-# remise à zéro si l'utilisateur change d'édition entretemps.
-SELECTION_SESSION_KEY = "restitution_test_selection"
+# différents), pour qu'ils restent affichés tant qu'ils ne sont pas
+# explicitement supprimés ou la sélection vidée — une nouvelle recherche
+# s'AJOUTE à la liste au lieu de la remplacer (voir demande explicite de
+# l'utilisateur : "tu ne conserves pas affichée la liste des tests
+# sélectionnés"). Persistée en base (RestitutionTestSelection), pas en
+# session Flask, pour ne plus disparaître d'une connexion à l'autre (voir
+# demande explicite : "la sélection disparaît d'une session à l'autre de
+# l'outil") — propre à chaque utilisateur et à chaque édition.
 
 
 def _get_selection_entries(edition_id):
-    """{test_id (str): {"note": float, "codes": [int]|None}} — codes=None
-    signifie "tous les critères du canal"."""
-    data = session.get(SELECTION_SESSION_KEY)
-    if not data or data.get("edition_id") != edition_id:
-        return {}
-    return data.get("entries_by_id", {})
+    """{test_id (str): {"note": float, "codes": [int]|None|"manuel"}} —
+    codes=None signifie "tous les critères du canal"."""
+    rows = RestitutionTestSelection.query.filter_by(user_id=current_user.id, edition_id=edition_id).all()
+    return {str(r.test_result_id): {"note": r.note_20, "codes": r.codes} for r in rows}
 
 
 def _set_selection_entries(edition_id, entries_by_id):
-    session[SELECTION_SESSION_KEY] = {"edition_id": edition_id, "entries_by_id": entries_by_id}
+    """Remplace intégralement la sélection accumulée par `entries_by_id`
+    (même contrat que l'ancienne version en session : les appelants
+    relisent puis réécrivent le dict complet)."""
+    RestitutionTestSelection.query.filter_by(user_id=current_user.id, edition_id=edition_id).delete(
+        synchronize_session=False
+    )
+    for id_str, entry in entries_by_id.items():
+        db.session.add(RestitutionTestSelection(
+            user_id=current_user.id, edition_id=edition_id, test_result_id=int(id_str),
+            codes=entry.get("codes"), note_20=entry.get("note"),
+        ))
+    db.session.commit()
 
 
 def _format_codes_display(codes):

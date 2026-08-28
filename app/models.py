@@ -319,6 +319,38 @@ class RedactedRecord(db.Model):
     created_by = db.relationship("User")
 
 
+class RestitutionTestSelection(db.Model):
+    """
+    Une entrée de la sélection de tests accumulée pour « Sélection des
+    tests pour restitution » / « Caviarder des records » (les 2 pages
+    travaillent sur la même liste). Persistée en base plutôt qu'en
+    session Flask pour ne plus disparaître d'une connexion à l'autre
+    (voir demande explicite de l'utilisateur) — propre à chaque
+    utilisateur et à chaque édition, comme l'édition courante (voir
+    app/editions.py) : chacun compose sa propre liste sans effacer celle
+    des autres.
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    edition_id = db.Column(db.String(20), nullable=False, index=True)
+    test_result_id = db.Column(db.Integer, db.ForeignKey("test_result.id"), nullable=False)
+
+    # None = tous les critères du canal, "manuel" = test choisi directement
+    # par son numéro (voir _direct_test_lookup), sinon liste de codes.
+    codes = db.Column(db.JSON, nullable=True)
+    note_20 = db.Column(db.Float, nullable=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship("User")
+    test_result = db.relationship("TestResult")
+
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "edition_id", "test_result_id", name="uq_restitution_test_selection"),
+    )
+
+
 class ReportTemplate(db.Model):
     """
     Un modèle de rapport chargé pour « Rapport d'étude » : le fichier de
