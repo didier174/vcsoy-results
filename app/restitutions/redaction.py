@@ -17,11 +17,30 @@ La recherche est insensible à la casse ET aux accents (voir
 _find_actual_spellings) : un nom saisi sans ses accents (ex. "Francois"
 pour "François", cas fréquent) est quand même retrouvé et caviardé avec
 l'orthographe réelle du document.
+
+Certains records ne sont que des captures d'écran (ex. conversation de
+chat) sans AUCUNE couche de texte sélectionnable — page.search_for ne
+peut alors rien y trouver, quel que soit le nom saisi. Dans ce cas, la
+page est rendue en image et passée à un moteur OCR (RapidOCR) pour
+retrouver le texte ET sa position, puis apply_redactions(images=2,
+valeur par défaut) efface réellement les pixels de l'image sous le
+rectangle trouvé — pas un simple cache dessiné par-dessus (voir demande
+explicite : caviardage réussi, avec OCR, sur un record de ce type).
+
+RapidOCR peut planter NATIVEMENT (segfault, observé en pratique sur une
+image sans texte détecté — cas très fréquent, ex. une page presque
+blanche) — un crash qu'un try/except Python ne peut PAS intercepter, et
+qui tuerait tout le worker web s'il avait lieu dans son propre
+processus. L'inférence OCR tourne donc dans un PROCESSUS SÉPARÉ (voir
+_ocr_images) : un crash n'y coûte que cette page (traitée comme "rien
+trouvé"), jamais la stabilité du serveur.
 """
 
 import io
 import re
+import time
 import unicodedata
+from multiprocessing import get_context
 
 import pymupdf
 
@@ -31,6 +50,23 @@ BLACKOUT_FILL = (0, 0, 0)
 MASK_FILL = (1, 1, 1)
 MASK_TEXT_COLOR = (0, 0, 0)
 MASK_FONTSIZE = 8
+
+# Zoom appliqué au rendu de la page avant OCR. 2.0 (~144 dpi) manquait
+# des mots pourtant nets à l'œil (ex. "VALARS" en petite police dans une
+# capture de chat, retrouvé de façon fiable à partir de 3.0) — mesuré
+# sur un vrai record avant de fixer cette valeur. Coût : ~2-3s/page.
+OCR_ZOOM = 3.0
+
+# Budget total accordé au processus OCR pour TOUT le document avant
+# qu'on abandonne les pages restantes (traitées comme "rien trouvé" —
+# voir _ocr_images). Un budget global plutôt que par page : sinon, un
+# document de plusieurs pages qui plante sur chacune pourrait dépasser
+# le timeout gunicorn (voir render.yaml) en cumulant page après page.
+OCR_TOTAL_TIMEOUT = 90
+# Granularité de sondage de la file de résultats — courte pour détecter
+# un processus mort presque immédiatement plutôt que d'attendre le
+# budget entier (voir _ocr_images).
+OCR_POLL_INTERVAL = 0.5
 
 
 def _mask_email(email):
@@ -112,6 +148,152 @@ def _blackout_all(page, page_text, term):
     return hit
 
 
+def _pixmap_to_array(pix):
+    import numpy as np
+    img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+    if pix.n == 4:
+        img = img[:, :, :3]
+    elif pix.n == 1:
+        img = np.repeat(img, 3, axis=2)
+    return img.copy()  # copie contiguë ET modifiable — un buffer en
+    # lecture seule (frombuffer) a provoqué un segfault dans le moteur OCR
+
+
+def _render_page_for_ocr(page):
+    """Rend la page en image (voir OCR_ZOOM), dans CE processus — seule
+    l'inférence OCR elle-même tourne isolée (voir _ocr_images)."""
+    return _pixmap_to_array(page.get_pixmap(matrix=pymupdf.Matrix(OCR_ZOOM, OCR_ZOOM)))
+
+
+def _ocr_worker(images, result_queue):
+    """Exécuté dans un PROCESSUS SÉPARÉ (voir _ocr_images) : un crash
+    natif du moteur OCR ne tue alors que ce processus, jamais le worker
+    web. Pousse chaque résultat au fil de l'eau (pas tout à la fin) pour
+    que les pages déjà traitées avant un plantage éventuel ne soient pas
+    perdues."""
+    try:
+        from rapidocr_onnxruntime import RapidOCR
+        ocr = RapidOCR()
+    except Exception:
+        return
+    for idx, img in enumerate(images):
+        try:
+            result, _elapse = ocr(img)
+        except Exception:
+            result = None
+        result_queue.put((idx, result))
+
+
+def _ocr_images(images):
+    """Reconnaissance de texte sur une liste d'images de page (une par
+    page du document), isolée dans un processus séparé. Retourne une
+    liste de même longueur — None pour une page dont l'OCR a échoué,
+    planté ou n'a pas pu être traitée dans le budget global (voir
+    OCR_TOTAL_TIMEOUT) ; le reste du caviardage de cette page (texte
+    natif) n'est jamais perdu pour autant.
+
+    Sonde la file par petits intervalles (OCR_POLL_INTERVAL) plutôt que
+    d'attendre un long timeout d'un coup : un processus mort (plantage)
+    est ainsi détecté quasi immédiatement, au lieu d'immobiliser la
+    requête jusqu'au bout du délai pour CHAQUE page restante."""
+    if not images:
+        return []
+    ctx = get_context("spawn")
+    result_queue = ctx.Queue()
+    proc = ctx.Process(target=_ocr_worker, args=(images, result_queue), daemon=True)
+    proc.start()
+    try:
+        results = [None] * len(images)
+        received = 0
+        deadline = time.monotonic() + OCR_TOTAL_TIMEOUT
+        while received < len(images) and time.monotonic() < deadline:
+            try:
+                idx, result = result_queue.get(timeout=OCR_POLL_INTERVAL)
+            except Exception:
+                if not proc.is_alive():
+                    break  # processus mort : rien de plus à en attendre
+                continue
+            results[idx] = result
+            received += 1
+        return results
+    finally:
+        proc.join(timeout=5)
+        if proc.is_alive():
+            proc.terminate()
+            proc.join()
+
+
+def _ocr_result_to_lines(page, result):
+    """Convertit le résultat OCR brut d'une page en (rect, texte_ligne)
+    en coordonnées PAGE (pas pixel) — une entrée par ligne détectée
+    (RapidOCR ne fournit pas de boîte par mot, voir _substring_rect pour
+    l'estimation du sous-rectangle d'un nom à l'intérieur d'une ligne)."""
+    lines = []
+    for box, text, _score in result or []:
+        xs = [pt[0] for pt in box]
+        ys = [pt[1] for pt in box]
+        rect = pymupdf.Rect(
+            page.rect.x0 + min(xs) / OCR_ZOOM, page.rect.y0 + min(ys) / OCR_ZOOM,
+            page.rect.x0 + max(xs) / OCR_ZOOM, page.rect.y0 + max(ys) / OCR_ZOOM,
+        )
+        lines.append((rect, text))
+    return lines
+
+
+def _find_spans(folded_text, folded_term):
+    """Positions (start, end) de `folded_term` dans `folded_text` —
+    valables tel quel sur le texte D'ORIGINE non replié, _fold produisant
+    toujours un caractère en sortie pour un caractère en entrée."""
+    spans = []
+    if not folded_term:
+        return spans
+    start = 0
+    while True:
+        idx = folded_text.find(folded_term, start)
+        if idx == -1:
+            break
+        spans.append((idx, idx + len(folded_term)))
+        start = idx + 1
+    return spans
+
+
+def _substring_rect(line_rect, line_len, start, end, pad_frac=0.015):
+    """Estime le rectangle de line_text[start:end] à l'intérieur de
+    line_rect par simple proportion de caractères — la boîte OCR couvre
+    la ligne ENTIÈRE, pas le mot seul ; sans cette estimation, caviarder
+    un nom noircirait tout le message qui le contient. Léger padding
+    pour absorber l'approximation (polices non monospaces)."""
+    if line_len == 0:
+        return line_rect
+    width = line_rect.width
+    pad = width * pad_frac
+    x0 = max(line_rect.x0, line_rect.x0 + width * (start / line_len) - pad)
+    x1 = min(line_rect.x1, line_rect.x0 + width * (end / line_len) + pad)
+    return pymupdf.Rect(x0, line_rect.y0, x1, line_rect.y1)
+
+
+def _ocr_blackout(page, lines, terms_by_field, found_by_field):
+    """Caviarde, dans les images de la page, le texte introuvable dans sa
+    couche de texte (voir module docstring), à partir des lignes déjà
+    reconnues par OCR (voir _ocr_result_to_lines). Marque
+    found_by_field[field] à True dès qu'une occurrence est trouvée par ce
+    biais."""
+    for rect, text in lines:
+        folded_text = _fold(text)
+        for field, terms in terms_by_field.items():
+            for term in terms:
+                for start, end in _find_spans(folded_text, _fold(term)):
+                    sub_rect = _substring_rect(rect, len(text), start, end)
+                    page.add_redact_annot(sub_rect, fill=BLACKOUT_FILL)
+                    found_by_field[field] = True
+        for m in EMAIL_RE.finditer(text):
+            sub_rect = _substring_rect(rect, len(text), m.start(), m.end())
+            page.add_redact_annot(
+                sub_rect, text=_mask_email(m.group(0)), fill=MASK_FILL,
+                text_color=MASK_TEXT_COLOR, fontsize=MASK_FONTSIZE,
+            )
+
+
 def redact_pdf(file_data, participant_name=None, tester_name=None, advisor_name=None):
     """Retourne (octets du PDF caviardé, noms_non_trouves) — le fichier
     d'origine (file_data) n'est jamais modifié, un nouveau document est
@@ -130,7 +312,14 @@ def redact_pdf(file_data, participant_name=None, tester_name=None, advisor_name=
 
     doc = pymupdf.open(stream=file_data, filetype="pdf")
     try:
-        for page in doc:
+        # Rendu de chaque page en image AVANT toute modification : l'OCR
+        # tourne dans un processus séparé (voir _ocr_images) et a donc
+        # besoin d'images déjà prêtes, pas des objets `page` eux-mêmes
+        # (non transmissibles à un autre processus).
+        page_images = [_render_page_for_ocr(page) for page in doc]
+        ocr_results = _ocr_images(page_images)
+
+        for page, ocr_result in zip(doc, ocr_results):
             page_text = page.get_text()
             for field, terms in terms_by_field.items():
                 for term in terms:
@@ -145,10 +334,22 @@ def redact_pdf(file_data, participant_name=None, tester_name=None, advisor_name=
                         rect, text=masked, fill=MASK_FILL, text_color=MASK_TEXT_COLOR, fontsize=MASK_FONTSIZE,
                     )
 
-            page.apply_redactions()
+            # Texte présent UNIQUEMENT dans une image (capture d'écran) :
+            # la couche de texte ci-dessus ne peut rien y trouver — OCR en
+            # complément (voir module docstring).
+            if ocr_result:
+                lines = _ocr_result_to_lines(page, ocr_result)
+                _ocr_blackout(page, lines, terms_by_field, found_by_field)
+
+            page.apply_redactions()  # images=2 (défaut) : pixels réellement effacés, pas un cache par-dessus
 
         out = io.BytesIO()
-        doc.save(out)
+        # garbage=4 (purge les objets devenus inutiles, ex. images
+        # remplacées) + deflate=True (recompresse les flux) : sans ça,
+        # apply_redactions(images=2) réembarque les images caviardées de
+        # façon quasi brute et le fichier peut être 60x plus gros (mesuré
+        # sur un vrai record : 360 Ko -> 23 Mo sans ces options).
+        doc.save(out, garbage=4, deflate=True)
         not_found = {field: bool(terms_by_field[field]) and not found_by_field[field] for field in names_by_field}
         return out.getvalue(), not_found
     finally:
