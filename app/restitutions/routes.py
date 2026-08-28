@@ -501,14 +501,23 @@ def redact_selected_tests():
             existing.file_data = redacted_bytes
             existing.file_size = len(redacted_bytes)
             existing.created_by_id = current_user.id
+            record_obj = existing
         else:
-            db.session.add(RedactedRecord(
+            record_obj = RedactedRecord(
                 test_result_id=t.id, filename=filename, content_type="application/pdf",
                 file_data=redacted_bytes, file_size=len(redacted_bytes), created_by_id=current_user.id,
-            ))
+            )
+            db.session.add(record_obj)
         redacted.append(t.test_id)
 
-    db.session.commit()
+        # Enregistré tout de suite (pas un seul commit à la fin de la
+        # boucle) puis retiré de la session : sur un gros lot (édition à
+        # venir, ~250-300 records à caviarder d'un coup), garder tous les
+        # octets déjà caviardés en mémoire jusqu'à la fin de la requête
+        # gonflerait inutilement sa consommation mémoire, en plus du pic
+        # transitoire du caviardage du record en cours.
+        db.session.commit()
+        db.session.expunge(record_obj)
 
     if redacted:
         _log(
