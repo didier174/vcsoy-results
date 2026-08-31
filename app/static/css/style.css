@@ -325,13 +325,25 @@ a { text-decoration: none; color: inherit; }
 .col-scenario-tpl-lang { flex: 0 0 100px; }
 .col-scenario-tpl-date { flex: 0 0 140px; }
 
-/* « Sélection des tests pour restitution » : dans la colonne de droite, on
-   empile « Ouvrir record » au-dessus de « Détail test ». Un placeholder
-   invisible (voir select_tests.html) est rendu quand la ligne n'a pas de
-   record, pour que chaque cellule ait la même hauteur et que tous les
-   boutons « Détail test » soient alignés verticalement d'une ligne à
-   l'autre. Réglage limité à ce tableau pour ne pas toucher les autres
-   listes qui réutilisent .col-report-dl. */
+/* « Sélection des tests pour restitution » : le « tableau » est une pile de
+   lignes flex indépendantes. Sans largeur imposée, chaque .col se
+   dimensionne à son contenu, donc la colonne « Critères » (« Tous » vs
+   « Sélection manuelle »…) n'a pas la même largeur d'une ligne à l'autre
+   et décale horizontalement la dernière colonne — les boutons « Détail
+   test » ne tombaient pas sur la même verticale. On fige donc la largeur
+   de chaque colonne pour que toutes les lignes s'alignent. */
+#selected-tests-form .col-st-num  { flex: 0 0 96px; }
+#selected-tests-form .col-st-part { flex: 1 1 auto; min-width: 0; }
+#selected-tests-form .col-st-chan { flex: 0 0 100px; }
+#selected-tests-form .col-st-note { flex: 0 0 56px; }
+#selected-tests-form .col-st-crit { flex: 0 0 160px; }
+
+/* Dans la dernière colonne, on empile « Ouvrir record » au-dessus de
+   « Détail test ». Un placeholder invisible (voir select_tests.html) est
+   rendu quand la ligne n'a pas de record, pour que chaque cellule ait la
+   même hauteur et que « Détail test » tombe au même endroit sur toutes
+   les lignes. align-items: flex-start cale les boutons sur le bord gauche
+   de la cellule (donc sur une verticale unique). */
 #selected-tests-form .col-report-dl {
   display: flex;
   flex-direction: column;
