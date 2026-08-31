@@ -325,6 +325,20 @@ a { text-decoration: none; color: inherit; }
 .col-scenario-tpl-lang { flex: 0 0 100px; }
 .col-scenario-tpl-date { flex: 0 0 140px; }
 
+/* « Sélection des tests pour restitution » : dans la colonne de droite, on
+   empile « Ouvrir record » au-dessus de « Détail test ». Un placeholder
+   invisible (voir select_tests.html) est rendu quand la ligne n'a pas de
+   record, pour que chaque cellule ait la même hauteur et que tous les
+   boutons « Détail test » soient alignés verticalement d'une ligne à
+   l'autre. Réglage limité à ce tableau pour ne pas toucher les autres
+   listes qui réutilisent .col-report-dl. */
+#selected-tests-form .col-report-dl {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
 .table-card-scroll {
   max-height: 480px;
   overflow-y: auto;

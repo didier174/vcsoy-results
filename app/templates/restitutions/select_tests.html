@@ -84,6 +84,13 @@
                      onclick="openRecordLink(event, this.href, {{ 'true' if test.record_is_audio else 'false' }})">
                     Ouvrir record
                   </a>
+                {% else %}
+                  {# Placeholder invisible : réserve la même hauteur que le bouton
+                     « Ouvrir record » pour que le bouton « Détail test » ci-dessous
+                     tombe à la même position sur toutes les lignes du tableau. #}
+                  <span class="btn btn-secondary btn-compact" aria-hidden="true" style="visibility: hidden;">
+                    Ouvrir record
+                  </span>
                 {% endif %}
                 <button type="button" class="btn btn-secondary btn-compact" onclick="showSelectedTestDetail({{ test.id }})">
                   Détail test
