@@ -26,6 +26,7 @@ canaux sur lesquels il a des tests (voir CONSOLIDATED_WEIGHTS), pour
 déterminer le lauréat de chaque catégorie.
 """
 
+from app.models import TestRecord
 from app.results.presentation import extract_codes, CHANNEL_ORDER
 
 # Code compté double, selon le canal.
@@ -94,6 +95,16 @@ def build_compilation_rows(participants, tests):
     Retourne une liste de lignes (une par participant), triées par
     catégorie puis participant, prêtes pour le template de compilation.
     """
+    # Un seul aller-retour en base pour savoir quels tests ont un record
+    # (et lequel est audio), plutôt que t.record accédé un par un dans la
+    # boucle ci-dessous — sur une édition à plusieurs milliers de tests
+    # (voir l'échelle visée pour la prochaine édition), t.record en boucle
+    # déclenche autant de requêtes SQL supplémentaires que de tests.
+    test_ids = [t.id for t in tests]
+    records_by_test_id = {
+        r.test_result_id: r for r in TestRecord.query.filter(TestRecord.test_result_id.in_(test_ids)).all()
+    } if test_ids else {}
+
     tests_by_participant = {}
     for t in tests:
         if not t.participant_id:
@@ -101,12 +112,13 @@ def build_compilation_rows(participants, tests):
         score = compute_test_score(t.channel, t.raw_data or {})
         if score is None:
             continue
+        record = records_by_test_id.get(t.id)
         tests_by_participant.setdefault(t.participant_id, []).append({
             "id": t.id,
             "test_id": t.test_id,
             "channel": t.channel,
-            "record_id": t.record.id if t.record else None,
-            "record_is_audio": t.record.is_audio if t.record else False,
+            "record_id": record.id if record else None,
+            "record_is_audio": record.is_audio if record else False,
             **score,
         })
 

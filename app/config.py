@@ -11,6 +11,17 @@ from datetime import timedelta
 
 
 class Config:
+    # Render définit automatiquement la variable RENDER dans ses conteneurs
+    # — sert ici à distinguer "vraie prod" de "poste de dev local", pour ne
+    # JAMAIS démarrer en production avec le repli codé en dur ci-dessous
+    # (qui, sinon, permettrait de forger cookies de session et jetons CSRF
+    # si SECRET_KEY venait à manquer par erreur de configuration). En local,
+    # le repli reste pratique pour démarrer sans .env dès le premier essai.
+    if os.environ.get("RENDER") and not os.environ.get("SECRET_KEY"):
+        raise RuntimeError(
+            "SECRET_KEY manquant en production (Render) — refus de démarrer avec la valeur par "
+            "défaut codée en dur. Définissez SECRET_KEY dans les variables d'environnement Render."
+        )
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-me")
 
     # Durcissement du cookie de session. SESSION_COOKIE_SECURE est
@@ -54,9 +65,13 @@ class Config:
     ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 
     # Connexion simplifiée (simple adresse e-mail, sans Google) — pratique en
-    # développement local. À mettre à "0" en production une fois la
-    # connexion Google validée, pour ne garder qu'une seule porte d'entrée.
-    ALLOW_DEV_LOGIN = os.environ.get("ALLOW_DEV_LOGIN", "1") == "1"
+    # développement local. Défaut "0" (désactivée) si la variable est
+    # absente : mieux vaut devoir l'activer explicitement en local que de
+    # risquer une réactivation silencieuse de cette porte dérobée en
+    # production si la variable venait à disparaître par erreur (le fichier
+    # .env local la définit explicitement à "1", donc le dev local n'est
+    # pas affecté par ce changement de défaut).
+    ALLOW_DEV_LOGIN = os.environ.get("ALLOW_DEV_LOGIN", "0") == "1"
 
     # Limite la taille totale d'une requête envoyée (chargement de fichiers).
     # 300 Mo pour permettre le chargement d'un lot de fichiers "records"
