@@ -43,4 +43,4 @@ services:
 
 databases:
   - name: vcsoy-results-db
-    plan: free
+    plan: basic-1gb
