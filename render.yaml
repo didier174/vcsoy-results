@@ -2,14 +2,14 @@ services:
   - type: web
     name: vcsoy-results
     env: python
-    plan: free
+    plan: starter
     buildCommand: "pip install -r requirements.txt"
     # --timeout 120 : marge de sécurité pour les opérations synchrones les
     # plus lourdes (validation de gros fichiers Excel, génération de
     # rapports PPTX). La génération de scénarios par IA tourne en
     # arrière-plan (voir app/scenarios/routes.py, _run_generation) et ne
     # dépend donc plus de ce timeout, aussi longue soit-elle.
-    # --max-requests 15 --max-requests-jitter 5 : sur le plan gratuit (peu
+    # --max-requests 15 --max-requests-jitter 5 : sur ce plan (512 Mo, peu
     # de mémoire), un worker gunicorn qui enchaîne plusieurs générations de
     # rapports d'étude (modèle .pptx volumineux, ~44 diapositives) peut ne
     # jamais rendre à l'OS la mémoire momentanément utilisée. On force donc
