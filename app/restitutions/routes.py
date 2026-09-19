@@ -30,6 +30,7 @@ from app.models import (
     RestitutionTestSelection, ActionLog,
 )
 from app.editions import get_current_edition_id, get_edition
+from app.test_deletion import delete_test_dependents
 from app.menu import MENU_ITEMS
 from app.reports.generator import substitute_tags
 from app.reports.report_cache import get_fresh_edition_cache
@@ -392,7 +393,7 @@ def delete_selected_tests():
         ).all()
         deleted = len(to_delete)
         ids = [t.id for t in to_delete]
-        TestRecord.query.filter(TestRecord.test_result_id.in_(ids)).delete(synchronize_session=False)
+        delete_test_dependents(ids)
         TestResult.query.filter(TestResult.edition_id == edition_id, TestResult.id.in_(ids)).delete(
             synchronize_session=False
         )

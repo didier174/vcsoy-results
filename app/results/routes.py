@@ -21,6 +21,7 @@ from werkzeug.utils import secure_filename
 from app.extensions import db
 from app.models import Category, Participant, TestResult, TestRecord, ActionLog, FileUpload
 from app.editions import get_current_edition_id, get_edition
+from app.test_deletion import delete_test_dependents
 from app.menu import MENU_ITEMS
 from app.access_control import admin_required
 from app.results.validation import validate_workbook, EXPECTED_SHEETS
@@ -127,7 +128,7 @@ def cancel_upload():
     test_ids = [
         t.id for t in TestResult.query.filter_by(edition_id=edition_id, source_filename=filename).all()
     ]
-    TestRecord.query.filter(TestRecord.test_result_id.in_(test_ids)).delete(synchronize_session=False)
+    delete_test_dependents(test_ids)
     deleted = TestResult.query.filter_by(edition_id=edition_id, source_filename=filename).delete()
     FileUpload.query.filter_by(edition_id=edition_id, filename=filename).delete()
     db.session.commit()

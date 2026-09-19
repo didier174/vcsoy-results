@@ -20,6 +20,7 @@ from flask_login import login_required, current_user
 from app.extensions import db
 from app.models import Category, Participant, TestResult, TestRecord, Invoice, StudyReport, ActionLog
 from app.editions import get_current_edition_id, get_edition
+from app.test_deletion import delete_test_dependents
 from app.access_control import user_is_admin
 from app.menu import MENU_ITEMS
 
@@ -122,7 +123,7 @@ def delete_selected():
             })
 
         test_ids = [t.id for t in TestResult.query.filter(TestResult.participant_id.in_(ids)).all()]
-        TestRecord.query.filter(TestRecord.test_result_id.in_(test_ids)).delete(synchronize_session=False)
+        delete_test_dependents(test_ids)
         TestResult.query.filter(TestResult.participant_id.in_(ids)).delete(synchronize_session=False)
 
     # Les factures et rapports d'études déjà générés sont des instantanés
