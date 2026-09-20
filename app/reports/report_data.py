@@ -145,10 +145,14 @@ def _within_hours(raw_data, key, hours):
 
 
 def _slow_pickup(raw_data):
-    try:
-        return float(raw_data.get("code 8 Answered Call Time MIN")) > 4
-    except (TypeError, ValueError):
-        return False
+    """« Prise(s) en charge > 4 min » (diapo « Les cas d'inaccessibilité »).
+
+    Lit le Code 9 (« Time to Answer » : temps de prise en charge par un
+    conseiller), pas le Code 8 (temps de décroché, norme 20 s : il ne
+    dépasse jamais 4 min). Seuil sur la durée TOTALE (minutes + secondes) :
+    comparer les seules minutes à 4 raterait un appel de 4 min 42 s."""
+    seconds = _phone_duration(raw_data, "prise")
+    return seconds is not None and seconds > 4 * 60
 
 
 def _bucket_stats(channel, tests, day=None, half=None):
