@@ -42,8 +42,18 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL", "sqlite:///vcsoy_dev.db")
     # Certains fournisseurs (dont Render, historiquement) donnent une URL
     # commençant par "postgres://" alors que SQLAlchemy exige "postgresql://".
+    # On force explicitement "+psycopg2" (au lieu du "postgresql://" nu) :
+    # sans pilote précisé, SQLAlchemy essaie psycopg2 puis, s'il est
+    # introuvable, bascule SILENCIEUSEMENT sur psycopg (v3, non installé
+    # -- pas dans requirements.txt) au lieu d'échouer clairement. C'est ce
+    # qui a fait planter le déploiement du 25/09 : psycopg2-binary n'avait
+    # pas encore de roue précompilée pour Python 3.14 (voir runtime.txt,
+    # qui fige la version de Python pour éviter ce genre de bascule
+    # silencieuse vers une version toute neuve non testée).
     if SQLALCHEMY_DATABASE_URI.startswith("postgres://"):
-        SQLALCHEMY_DATABASE_URI = SQLALCHEMY_DATABASE_URI.replace("postgres://", "postgresql://", 1)
+        SQLALCHEMY_DATABASE_URI = SQLALCHEMY_DATABASE_URI.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif SQLALCHEMY_DATABASE_URI.startswith("postgresql://"):
+        SQLALCHEMY_DATABASE_URI = SQLALCHEMY_DATABASE_URI.replace("postgresql://", "postgresql+psycopg2://", 1)
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # pool_pre_ping : teste chaque connexion (requête minimale) avant de la
