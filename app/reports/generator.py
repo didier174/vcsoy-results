@@ -15,10 +15,10 @@ Coloration conditionnelle (vert/rouge, diapositives listées dans
 COLOR_CODED_SLIDES) : confirmé, s'applique à toute cellule qui ne contient
 QUE ("vous" ou "catégorie") comparée à son équivalent "tous" de la même
 ligne — vert si supérieur, rouge si inférieur, aucune couleur en cas
-d'égalité stricte ou de donnée manquante. Exception (diapo 13, ventilation
-phone par jour / créneau, 4 lignes colorées) : chaque cellule est comparée à
-la valeur globale phone de sa propre ligne (note globale ou QS globale), voir
-_color_counterpart_tag. On réutilise directement les
+d'égalité stricte ou de donnée manquante. Exception (diapo 13, tableaux phone
+par jour / créneau « Temporalité » et « Qualité de service ») : seule la ligne
+du participant est colorée (comparée à la même colonne de la ligne « tous ») ;
+les trois autres lignes restent en noir, voir _apply_color. On réutilise directement les
 valeurs déjà formatées (pas de dictionnaire de valeurs brutes séparé) : la
 diapositive n'a jamais qu'un seul type de grandeur par ligne (note, %, ou
 durée), donc reparser le texte affiché suffit et évite de dupliquer tout
@@ -88,16 +88,14 @@ def _color_counterpart_tag(normalized_tag):
     les notes/pourcentages de la partie droite."""
     if normalized_tag.startswith("temps "):
         return None
-    # Diapo 13, tableaux « Temporalité » (notes) et « Qualité de service »
-    # (QS) par jour / créneau, sur les 4 lignes (vous, catégorie, ensemble des
-    # participants, lauréats) : la couleur compare chaque cellule à la valeur
-    # GLOBALE du canal phone de SA PROPRE ligne — la note globale affichée
-    # ailleurs dans le rapport (« Total phone note <portée> ») ou la QS globale
-    # (« QS phone pct <portée> ») — et non à la cellule « tous » du même jour.
+    # Diapo 13, tableaux « Temporalité » (notes) et « Qualité de service » (QS)
+    # par jour / créneau : SEULE la ligne du participant (« vous ») est
+    # colorée, par rapport à la même colonne de la ligne « tous » ; les lignes
+    # catégorie / tous / lauréats restent en noir (voir _apply_color).
     slot = _phone_slot_parts(normalized_tag)
     if slot is not None:
-        kind, scope = slot
-        return f"total phone note {scope}" if kind == "note" else f"qs phone pct {scope}"
+        _, scope = slot
+        return normalized_tag[: -len(scope)] + "tous" if scope == "vous" else None
     for suffix in (" vous", " categorie"):
         if normalized_tag.endswith(suffix):
             return normalized_tag[: -len(suffix)] + " tous"
@@ -165,6 +163,12 @@ def _substitute_paragraph(paragraph, lookup, color_enabled=False):
         _apply_color(paragraph, lookup, full_text.strip())
 
 
+def _paint(paragraph, color):
+    for run in paragraph.runs:
+        if run.text:
+            run.font.color.rgb = color
+
+
 def _apply_color(paragraph, lookup, original_text):
     """original_text : texte du paragraphe AVANT substitution. On ne
     colore que les cellules ne contenant RIEN d'autre qu'un seul tag
@@ -175,18 +179,21 @@ def _apply_color(paragraph, lookup, original_text):
         return
     tag = _normalize(m.group(1))
     tous_tag = _color_counterpart_tag(tag)
+    is_phone_slot = _phone_slot_parts(tag) is not None
     if tous_tag is None:
+        if is_phone_slot:
+            # Lignes catégorie / tous / lauréats des tableaux par créneau
+            # (diapo 13) : jamais colorées, affichées en noir même si le modèle
+            # y code une couleur en dur.
+            _paint(paragraph, COLOR_NEUTRAL)
         return
     own = _comparable(lookup.get(tag))
     ref = _comparable(lookup.get(tous_tag))
     if own is None or ref is None or own == ref:
-        if _phone_slot_parts(tag) is not None:
-            # Égalité / donnée manquante : on neutralise la couleur, pour qu'une
-            # couleur vert/rouge codée en dur dans une cellule du modèle ne
-            # reste pas affichée à tort.
-            for run in paragraph.runs:
-                if run.text:
-                    run.font.color.rgb = COLOR_NEUTRAL
+        if is_phone_slot:
+            # Égalité / donnée manquante : noir, pour qu'une couleur vert/rouge
+            # codée en dur dans une cellule du modèle ne reste pas affichée.
+            _paint(paragraph, COLOR_NEUTRAL)
         return
     color = COLOR_GOOD if own > ref else COLOR_BAD
     for run in paragraph.runs:

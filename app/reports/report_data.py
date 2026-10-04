@@ -156,14 +156,15 @@ def _slow_pickup(raw_data):
 
 
 def _bucket_stats(channel, tests, day=None, half=None):
-    """Note moyenne /20 et QS d'un jour (ou d'un créneau AM/PM).
+    """Note moyenne /20 et QS d'un jour (ou d'un créneau AM/PM), diapo 13.
 
-    - note : moyenne des notes /20 des seuls tests QS = Completed du créneau
-      (même règle que « Total QS <canal> note », qui sert de référence de
-      comparaison dans la diapo 13) ;
-    - pct (la QS du créneau) : part des tests QS = Completed parmi TOUS les
-      tests du créneau (complétés ou non), soit un taux de complétion par
-      créneau, comparable à « QS phone pct » (la QS globale du canal).
+    - note (tableau « Temporalité ») : moyenne des notes /20 de TOUS les tests
+      du créneau (complétés ou non), comme la note globale phone de la diapo 9
+      (« Total phone note ») sur laquelle reposent aussi les résultats et les
+      lauréats ;
+    - pct (tableau « Qualité de service par jour et tranche horaire ») : la QS
+      du créneau = part des tests QS = Completed parmi TOUS les tests du
+      créneau (complétés ou non).
     Un créneau sans test donne « — » pour les deux."""
     in_bucket = [
         t for t in tests
@@ -173,7 +174,7 @@ def _bucket_stats(channel, tests, day=None, half=None):
     ]
     completed = [t for t in in_bucket if is_test_completed(channel, t.raw_data or {})]
     pct = round(100 * len(completed) / len(in_bucket)) if in_bucket else None
-    return _avg(_channel_note20_list(channel, completed)), pct
+    return _avg(_channel_note20_list(channel, in_bucket)), pct
 
 
 def compute_scope_values(tests):
