@@ -156,25 +156,24 @@ def _slow_pickup(raw_data):
 
 
 def _bucket_stats(channel, tests, day=None, half=None):
-    """Note moyenne /20 et part des tests d'un jour (ou d'un créneau AM/PM).
+    """Note moyenne /20 et QS d'un jour (ou d'un créneau AM/PM).
 
-    Les deux valeurs portent sur TOUS les tests du canal de la portée, quel que
-    soit leur statut QS (Completed, Failed, Dropped, vide) : le pourcentage est
-    la RÉPARTITION des tests entre les jours / créneaux (nombre de tests du
-    jour ÷ nombre total de tests du canal dans la portée), pas un taux de tests
-    complétés. Un jour sans test donne donc 0 % (et « — » seulement si la
-    portée n'a aucun test). Les pourcentages arrondis peuvent totaliser 99 ou
-    101 %, et un test hors lundi-samedi (ou sans jour) n'apparaît dans aucune
-    colonne mais reste au dénominateur."""
-    channel_tests = [t for t in tests if t.channel == channel]
-    filtered = [
-        t for t in channel_tests
-        if (day is None or (t.raw_data or {}).get("Day") == DAY_RAW_BY_KEY[day])
+    - note : moyenne des notes /20 des seuls tests QS = Completed du créneau
+      (même règle que « Total QS <canal> note », qui sert de référence de
+      comparaison dans la diapo 13) ;
+    - pct (la QS du créneau) : part des tests QS = Completed parmi TOUS les
+      tests du créneau (complétés ou non), soit un taux de complétion par
+      créneau, comparable à « QS phone pct » (la QS globale du canal).
+    Un créneau sans test donne « — » pour les deux."""
+    in_bucket = [
+        t for t in tests
+        if t.channel == channel
+        and (day is None or (t.raw_data or {}).get("Day") == DAY_RAW_BY_KEY[day])
         and (half is None or (t.raw_data or {}).get("Périod") == HALF_RAW_BY_KEY[half])
     ]
-    note20 = _channel_note20_list(channel, filtered)
-    pct = round(100 * len(filtered) / len(channel_tests)) if channel_tests else None
-    return _avg(note20), pct
+    completed = [t for t in in_bucket if is_test_completed(channel, t.raw_data or {})]
+    pct = round(100 * len(completed) / len(in_bucket)) if in_bucket else None
+    return _avg(_channel_note20_list(channel, completed)), pct
 
 
 def compute_scope_values(tests):

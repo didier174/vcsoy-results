@@ -15,7 +15,9 @@ Coloration conditionnelle (vert/rouge, diapositives listées dans
 COLOR_CODED_SLIDES) : confirmé, s'applique à toute cellule qui ne contient
 QUE ("vous" ou "catégorie") comparée à son équivalent "tous" de la même
 ligne — vert si supérieur, rouge si inférieur, aucune couleur en cas
-d'égalité stricte ou de donnée manquante. On réutilise directement les
+d'égalité stricte ou de donnée manquante. Exception (diapo 13, ventilation
+phone par jour / créneau) : la référence est la valeur globale du canal phone
+(note globale ou QS globale « tous »), voir _color_counterpart_tag. On réutilise directement les
 valeurs déjà formatées (pas de dictionnaire de valeurs brutes séparé) : la
 diapositive n'a jamais qu'un seul type de grandeur par ligne (note, %, ou
 durée), donc reparser le texte affiché suffit et évite de dupliquer tout
@@ -33,6 +35,8 @@ TAG_RE = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
 FULL_TAG_RE = re.compile(r"^\{\{\s*([^{}]+?)\s*\}\}$")
 
 COLOR_CODED_SLIDES = {13, 15, 19, 21, 23, 27, 31}  # numéros 1-indexés
+PHONE_GLOBAL_NOTE_TAG = "total qs phone note tous"
+PHONE_GLOBAL_QS_TAG = "qs phone pct tous"
 COLOR_GOOD = RGBColor(0x1E, 0x8E, 0x3E)
 COLOR_BAD = RGBColor(0xC0, 0x1C, 0x28)
 
@@ -75,6 +79,15 @@ def _color_counterpart_tag(normalized_tag):
     les notes/pourcentages de la partie droite."""
     if normalized_tag.startswith("temps "):
         return None
+    # Diapo 13, tableaux « Temporalité » (notes) et « Qualité de service »
+    # (QS) par jour / créneau : la couleur compare le créneau à la valeur
+    # GLOBALE du canal phone (note globale « Total QS phone note tous » ou QS
+    # globale « QS phone pct tous »), pas à la cellule « tous » du même jour.
+    if normalized_tag.endswith((" vous", " categorie")) and " phone " in normalized_tag:
+        if normalized_tag.startswith(("note jour ", "note horaire ")):
+            return PHONE_GLOBAL_NOTE_TAG
+        if normalized_tag.startswith(("pct jour ", "pct horaire ")):
+            return PHONE_GLOBAL_QS_TAG
     for suffix in (" vous", " categorie"):
         if normalized_tag.endswith(suffix):
             return normalized_tag[: -len(suffix)] + " tous"
