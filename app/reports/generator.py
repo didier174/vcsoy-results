@@ -16,8 +16,9 @@ COLOR_CODED_SLIDES) : confirmé, s'applique à toute cellule qui ne contient
 QUE ("vous" ou "catégorie") comparée à son équivalent "tous" de la même
 ligne — vert si supérieur, rouge si inférieur, aucune couleur en cas
 d'égalité stricte ou de donnée manquante. Exception (diapo 13, ventilation
-phone par jour / créneau) : la référence est la valeur globale du canal phone
-(note globale ou QS globale « tous »), voir _color_counterpart_tag. On réutilise directement les
+phone par jour / créneau, 4 lignes colorées) : chaque cellule est comparée à
+la valeur globale phone de sa propre ligne (note globale ou QS globale), voir
+_color_counterpart_tag. On réutilise directement les
 valeurs déjà formatées (pas de dictionnaire de valeurs brutes séparé) : la
 diapositive n'a jamais qu'un seul type de grandeur par ligne (note, %, ou
 durée), donc reparser le texte affiché suffit et évite de dupliquer tout
@@ -35,10 +36,11 @@ TAG_RE = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
 FULL_TAG_RE = re.compile(r"^\{\{\s*([^{}]+?)\s*\}\}$")
 
 COLOR_CODED_SLIDES = {13, 15, 19, 21, 23, 27, 31}  # numéros 1-indexés
-PHONE_GLOBAL_NOTE_TAG = "total qs phone note tous"
-PHONE_GLOBAL_QS_TAG = "qs phone pct tous"
 COLOR_GOOD = RGBColor(0x1E, 0x8E, 0x3E)
 COLOR_BAD = RGBColor(0xC0, 0x1C, 0x28)
+COLOR_NEUTRAL = RGBColor(0x00, 0x00, 0x00)
+
+PHONE_SLOT_RE = re.compile(r"^(note|pct) (?:jour|horaire) \w+ phone (vous|categorie|tous|laureats)$")
 
 DURATION_RE = re.compile(r"^(?:(\d+)h)?(?:(\d+)min)?(?:(\d+)sec)?$")
 
@@ -69,6 +71,13 @@ def _comparable(value):
         return None
 
 
+def _phone_slot_parts(normalized_tag):
+    """(« note » ou « pct », portée) si le tag est une valeur phone par jour /
+    créneau de la diapo 13, sinon None."""
+    m = PHONE_SLOT_RE.match(normalized_tag)
+    return (m.group(1), m.group(2)) if m else None
+
+
 def _color_counterpart_tag(normalized_tag):
     """Le tag « ... vous »/« ... catégorie » -> le tag « ... tous »
     correspondant sur la même ligne, ou None si ce n'est pas un tag de ce
@@ -80,14 +89,15 @@ def _color_counterpart_tag(normalized_tag):
     if normalized_tag.startswith("temps "):
         return None
     # Diapo 13, tableaux « Temporalité » (notes) et « Qualité de service »
-    # (QS) par jour / créneau : la couleur compare le créneau à la valeur
-    # GLOBALE du canal phone (note globale « Total QS phone note tous » ou QS
-    # globale « QS phone pct tous »), pas à la cellule « tous » du même jour.
-    if normalized_tag.endswith((" vous", " categorie")) and " phone " in normalized_tag:
-        if normalized_tag.startswith(("note jour ", "note horaire ")):
-            return PHONE_GLOBAL_NOTE_TAG
-        if normalized_tag.startswith(("pct jour ", "pct horaire ")):
-            return PHONE_GLOBAL_QS_TAG
+    # (QS) par jour / créneau, sur les 4 lignes (vous, catégorie, ensemble des
+    # participants, lauréats) : la couleur compare chaque cellule à la valeur
+    # GLOBALE du canal phone de SA PROPRE ligne — la note globale affichée
+    # ailleurs dans le rapport (« Total phone note <portée> ») ou la QS globale
+    # (« QS phone pct <portée> ») — et non à la cellule « tous » du même jour.
+    slot = _phone_slot_parts(normalized_tag)
+    if slot is not None:
+        kind, scope = slot
+        return f"total phone note {scope}" if kind == "note" else f"qs phone pct {scope}"
     for suffix in (" vous", " categorie"):
         if normalized_tag.endswith(suffix):
             return normalized_tag[: -len(suffix)] + " tous"
@@ -170,6 +180,13 @@ def _apply_color(paragraph, lookup, original_text):
     own = _comparable(lookup.get(tag))
     ref = _comparable(lookup.get(tous_tag))
     if own is None or ref is None or own == ref:
+        if _phone_slot_parts(tag) is not None:
+            # Égalité / donnée manquante : on neutralise la couleur, pour qu'une
+            # couleur vert/rouge codée en dur dans une cellule du modèle ne
+            # reste pas affichée à tort.
+            for run in paragraph.runs:
+                if run.text:
+                    run.font.color.rgb = COLOR_NEUTRAL
         return
     color = COLOR_GOOD if own > ref else COLOR_BAD
     for run in paragraph.runs:
