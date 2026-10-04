@@ -166,8 +166,8 @@ def create_report():
         flash(
             "Aucun lauréat n'a pu être déterminé pour cette édition (aucun "
             "résultat chargé, ou aucun participant n'atteint 11,5/20 et le "
-            "1er rang de sa catégorie), ou les résultats ont changé depuis "
-            "le dernier calcul. Le rapport d'étude ne peut pas être généré : "
+            "1er rang de sa catégorie), ou les résultats (ou le calcul du rapport) ont "
+            "changé depuis le dernier calcul. Le rapport d'étude ne peut pas être généré : "
             "chargez les fichiers de résultats de toute l'édition, vérifiez "
             "« Liste des lauréats », puis réessayez.",
             "error",

@@ -10,13 +10,16 @@ fois, quand l'utilisateur relance « Liste des lauréats » — geste déjà
 obligatoire avant de générer des rapports d'étude.
 
 `get_fresh_edition_cache` compare une signature bon marché (nombre de
-tests de l'édition + date du plus récent chargement) à celle enregistrée
-avec le cache : si les résultats ont changé depuis, le cache est considéré
+tests de l'édition + date du plus récent chargement + empreinte du code de
+calcul) à celle enregistrée avec le cache : si les résultats OU le calcul ont
+changé depuis, le cache est considéré
 périmé (None) et l'appelant doit demander à l'utilisateur de relancer
 « Liste des lauréats » avant de générer un rapport.
 """
 
+import hashlib
 from datetime import datetime
+from pathlib import Path
 
 from sqlalchemy import func
 
@@ -33,10 +36,33 @@ from app.results.scoring import (
 from app.results.presentation import CHANNEL_ORDER
 
 
+def _calc_fingerprint():
+    """Empreinte courte du code qui calcule les agrégats (report_data.py,
+    report_cache.py, scoring.py). Elle entre dans la signature du cache : dès
+    que le calcul change (déploiement d'une correction), le cache enregistré
+    avec l'ancien code est considéré périmé et l'utilisateur est invité à
+    relancer « Liste des lauréats », au lieu de générer un rapport avec des
+    valeurs « tous / catégorie / lauréats » calculées par l'ancienne version.
+    Fins de ligne normalisées pour que l'empreinte ne dépende pas du système
+    qui a extrait le code."""
+    here = Path(__file__).resolve()
+    sources = (here.with_name("report_data.py"), here, here.parents[1] / "results" / "scoring.py")
+    digest = hashlib.sha1()
+    try:
+        for path in sources:
+            digest.update(path.read_bytes().replace(b"\r\n", b"\n"))
+    except OSError:
+        return "0"
+    return digest.hexdigest()[:8]
+
+
+_CALC_FINGERPRINT = _calc_fingerprint()
+
+
 def _results_signature(edition_id):
     count = TestResult.query.filter_by(edition_id=edition_id).count()
     latest = db.session.query(func.max(TestResult.uploaded_at)).filter_by(edition_id=edition_id).scalar()
-    return f"{count}:{latest.isoformat() if latest else ''}"
+    return f"{_CALC_FINGERPRINT}:{count}:{latest.isoformat() if latest else ''}"
 
 
 def get_fresh_edition_cache(edition_id):
