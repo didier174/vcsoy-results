@@ -12,6 +12,7 @@ l'utilisateur corrige le fichier avant de le recharger.
 """
 
 import io
+from datetime import datetime
 
 import openpyxl
 from flask import Blueprint, render_template, request, redirect, url_for, flash
@@ -196,6 +197,12 @@ def upload_file():
             existing.raw_data = row["raw_data"]
             existing.source_filename = filename
             existing.uploaded_by_id = current_user.id
+            # Le cache des agrégats d'édition (report_cache.py) se périme quand le
+            # nombre de tests ou la date du dernier chargement change : sans cette
+            # ligne, recharger un fichier corrigé (mêmes ID de tests, valeurs
+            # différentes) laissait le cache « tous / catégorie / lauréats » sur les
+            # anciennes valeurs, sans aucun avertissement.
+            existing.uploaded_at = datetime.utcnow()
             updated += 1
         else:
             db.session.add(TestResult(
