@@ -21,10 +21,13 @@ manuelle des étiquettes, traits de rappel) déjà réglée dans le modèle.
 
 import copy
 import math
+import re
 import statistics
 from itertools import permutations
 
 from lxml import etree
+from pptx.chart.data import CategoryChartData
+from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.oxml.ns import qn
 
 from app.models import TestResult
@@ -163,6 +166,68 @@ def _set_numlit_points(numlit_el, values_by_idx):
         pt.set("idx", str(idx))
         v = etree.SubElement(pt, qn("c:v"))
         v.text = repr(float(values_by_idx[idx]))
+
+
+# ------------------------------- Anneaux de taux (diapos 12, 17, 21, 25, 29)
+
+# Diapositive (0-based) -> balise « vous » dont la valeur pilote l'anneau. Le
+# modèle contient un graphique en anneau (2 parts : taux / reste) dont les
+# valeurs d'exemple étaient figées : sans cette mise à jour, l'anneau ne
+# correspondait jamais au pourcentage affiché au centre.
+DONUT_SLIDES = {
+    11: "QS phone pct vous",
+    16: "taux reponse mail vous",
+    20: "taux disponibilite web vous",
+    24: "taux reponse rs vous",
+    28: "taux conv abouties chat vous",
+}
+
+
+def _share_from_pct_text(text):
+    """« 88% » -> 0.88 ; None si la valeur est absente (« — »)."""
+    m = re.match(r"^\s*(\d+(?:[.,]\d+)?)\s*%\s*$", str(text))
+    return float(m.group(1).replace(",", ".")) / 100 if m else None
+
+
+def _find_doughnut_shape(shapes):
+    for shape in shapes:
+        if getattr(shape, "has_chart", False) and shape.has_chart \
+                and shape.chart._chartSpace.find(f".//{qn('c:doughnutChart')}") is not None:
+            return shape
+        if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+            found = _find_doughnut_shape(shape.shapes)
+            if found is not None:
+                return found
+    return None
+
+
+def apply_donut_charts(prs, values):
+    """Fait varier chaque anneau de taux selon le pourcentage « vous » affiché
+    au centre (ex. 50 % -> demi-anneau coloré, 50 % -> reste). Un taux absent
+    (« — », canal non testé) donne un anneau vide. Les couleurs de chaque
+    part restent celles du modèle ; le classeur intégré au graphique est mis
+    à jour avec les valeurs (replace_data), pour qu'« Modifier les données »
+    dans PowerPoint reste cohérent."""
+    lookup = {str(k).strip().lower(): v for k, v in values.items()}
+    for slide_idx, tag in DONUT_SLIDES.items():
+        if slide_idx >= len(prs.slides):
+            continue
+        try:
+            shape = _find_doughnut_shape(prs.slides[slide_idx].shapes)
+            if shape is None:
+                continue
+            share = _share_from_pct_text(lookup.get(tag.lower()))
+            share = 0.0 if share is None else min(1.0, max(0.0, share))
+            chart = shape.chart
+            plot = chart.plots[0]
+            chart_data = CategoryChartData(number_format="0%")
+            chart_data.categories = list(plot.categories)
+            chart_data.add_series(plot.series[0].name, (round(share, 4), round(1.0 - share, 4)))
+            chart.replace_data(chart_data)
+        except Exception:
+            # Un anneau qui ne se met pas à jour ne doit jamais empêcher la
+            # génération du rapport (modèle personnalisé, structure inattendue...).
+            continue
 
 
 # --------------------------------------- Diapositives 14/18/22/26/30 : mapping
@@ -821,7 +886,7 @@ def apply_highlight_boxes(prs, calibration):
             continue
 
 
-def apply_report_visuals(prs, participant, edition_id, cache, participant_tests=None, highlight_calibration=None):
+def apply_report_visuals(prs, participant, edition_id, cache, participant_tests=None, highlight_calibration=None, values=None):
     """Point d'entrée unique : applique la jauge (diapo 9), les 5 mappings
     d'importance (diapos 14/18/22/26/30) et le redimensionnement des encarts
     forces/axes de progrès (diapos 6/7/8) sur une Presentation déjà ouverte
@@ -834,7 +899,12 @@ def apply_report_visuals(prs, participant, edition_id, cache, participant_tests=
     highlight_calibration : capturé par l'appelant AVANT substitution des
     balises via capture_highlight_calibration (les encarts ont besoin de la
     longueur du texte À BALISES pour se calibrer, déjà perdue à ce stade) ;
-    ignoré (encarts non redimensionnés) si None."""
+    ignoré (encarts non redimensionnés) si None.
+    values : dict des balises du participant (build_participant_placeholders),
+    qui pilote les anneaux de taux (diapos 12/17/21/25/29) ; anneaux non
+    modifiés si None."""
+    if values is not None:
+        apply_donut_charts(prs, values)
     apply_gauge_chart(prs, participant, edition_id, participant_tests=participant_tests)
     apply_importance_mappings(prs, participant, edition_id, cache, participant_tests=participant_tests)
     if highlight_calibration is not None:

@@ -212,6 +212,7 @@ def create_report():
         apply_report_visuals(
             prs, participant, edition_id, cache,
             participant_tests=participant_tests, highlight_calibration=highlight_calibration,
+            values=values,
         )
     except Exception:
         current_app.logger.exception("Échec de la mise à jour des graphiques natifs du rapport d'étude")

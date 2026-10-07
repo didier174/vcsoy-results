@@ -21,6 +21,7 @@ relance « Liste des lauréats ». Seule la portée "vous" (les tests du seul
 participant courant, toujours petite) est calculée ici, en direct.
 """
 
+import math
 import re
 
 from app.results.presentation import CHANNEL_ORDER
@@ -98,25 +99,32 @@ def _phone_duration(raw_data, metric):
     return None
 
 
-def _mail_business_hours(raw_data):
-    value = raw_data.get("Business hours")
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+def _lookup(raw_data, key):
+    """Valeur d'une colonne du fichier résultat, en tolérant la casse et les
+    espaces dans l'en-tête (« Respond Time » / « Respond time », « Code 5 Obs »
+    / « Code5 obs »)."""
+    if key in raw_data:
+        return raw_data[key]
+    compact = re.sub(r"\s+", "", key).lower()
+    for header, value in raw_data.items():
+        if re.sub(r"\s+", "", str(header)).lower() == compact:
+            return value
+    return None
 
 
 def _duration_like_seconds(raw_data, key):
     """
-    Une durée Excel (ex. 'Test Duration', 'Respond Time', 'Call Duration')
-    arrive sous deux formes possibles selon le format de la cellule source,
-    toutes deux passées par validation._json_safe au chargement du fichier :
-    - cellule "durée" (datetime.timedelta) -> nombre de secondes (float) ;
+    Une durée Excel (ex. 'Test Duration', 'Respond Time', 'Business hours',
+    'Call Duration') arrive sous deux formes possibles selon le format de la
+    cellule source, toutes deux passées par validation._json_safe au
+    chargement du fichier :
+    - cellule "durée" (datetime.timedelta, cas d'une valeur >= 24 h ou d'un
+      format [h]:mm) -> nombre de SECONDES (float) ;
     - cellule "heure" (datetime.time, cas le plus courant en pratique pour
       ces colonnes) -> chaîne "HH:MM:SS" (.isoformat()), à reconvertir ici.
-    Retourne None si absente/illisible.
+    Retourne None si absente/illisible (ex. « Non observable »).
     """
-    value = raw_data.get(key)
+    value = _lookup(raw_data, key)
     if value is None or value == "":
         return None
     if isinstance(value, str) and re.match(r"^\d{1,2}:\d{2}:\d{2}", value):
@@ -130,18 +138,25 @@ def _duration_like_seconds(raw_data, key):
 
 def _extract_clicks(raw_data):
     """Le nombre de clics web n'est pas dans une colonne dédiée : il est
-    écrit en toutes lettres dans 'Code 5 Obs' (ex. '6 clicks to find the
-    answer', confirmé). On extrait le premier nombre entier trouvé."""
-    text = raw_data.get("Code 5 Obs")
-    if not text:
+    dans 'Code 5 Obs' (entier, ou texte du type '6 clicks to find the
+    answer'). On extrait le premier nombre entier trouvé."""
+    text = _lookup(raw_data, "Code 5 Obs")
+    if text is None or text == "":
         return None
     match = re.search(r"\d+", str(text))
     return int(match.group(0)) if match else None
 
 
-def _within_hours(raw_data, key, hours):
-    seconds = _duration_like_seconds(raw_data or {}, key)
-    return seconds is not None and seconds <= hours * 3600
+def _completed_pct(channel, tests):
+    """Part (en %) des tests QS = Completed parmi TOUS les tests du canal
+    (ce sont les « taux de réponse / disponibilité / conversations abouties »
+    des diapos 17, 21, 25 et 29, et la QS téléphone de la diapo 12). None
+    s'il n'y a aucun test."""
+    channel_tests = [t for t in tests if t.channel == channel]
+    if not channel_tests:
+        return None
+    done = sum(1 for t in channel_tests if is_test_completed(channel, t.raw_data or {}))
+    return round(100 * done / len(channel_tests))
 
 
 def _slow_pickup(raw_data):
@@ -216,10 +231,7 @@ def compute_scope_values(tests):
 
     # -- Téléphone : qualité de service (taux de tests complétés)
     phone_tests = [t for t in tests if t.channel == "phone"]
-    pct = (
-        round(100 * sum(1 for t in phone_tests if is_test_completed("phone", t.raw_data or {})) / len(phone_tests))
-        if phone_tests else None
-    )
+    pct = _completed_pct("phone", tests)
     v["QS phone pct"] = _fmt_pct(pct)
     v["coupures avant phone"] = sum(
         1 for t in phone_tests if str((t.raw_data or {}).get("Call Drop", "")).strip().lower() in ("1", "oui", "yes", "true")
@@ -241,75 +253,56 @@ def compute_scope_values(tests):
         v[f"note horaire {half} phone"] = _fmt_note(note)
         v[f"pct horaire {half} phone"] = _fmt_pct(pct)
 
-    # -- Mail : taux de réponse / délai de réponse / cas d'inaccessibilité
+    # -- Mail : taux de réponse / délai de réponse / cas d'inaccessibilité.
+    # Règles validées par Didier (2026-10) :
+    #  - taux de réponse = part des tests QS = Completed ;
+    #  - « Business hours » = délai en heures ouvrées ; « Non observable » (ou
+    #    illisible) = aucune réponse reçue ;
+    #  - réponses reçues > 2 jours ouvrés = tests QS Not Completed ET Business
+    #    hours > 16 h ;
+    #  - réponses non reçues = tests QS Not Completed ET Business hours non
+    #    observable ;
+    #  - temps moyen = moyenne des Business hours (tous les tests qui en ont un).
     mail_tests = [t for t in tests if t.channel == "mail"]
-    if mail_tests:
-        repondus = sum(1 for t in mail_tests if (t.raw_data or {}).get("Return date"))
-        pct_reponse = round(100 * repondus / len(mail_tests))
-    else:
-        pct_reponse = None
-    v["taux reponse mail"] = _fmt_pct(pct_reponse)
+    v["taux reponse mail"] = _fmt_pct(_completed_pct("mail", tests))
 
-    delais_heures = [_mail_business_hours(t.raw_data or {}) for t in mail_tests]
-    delais_heures = [d for d in delais_heures if d is not None]
-    avg_heures = _avg(delais_heures)
-    v["delai reponse mail"] = _format_duration(avg_heures * 3600 if avg_heures is not None else None)
+    business_seconds = [_duration_like_seconds(t.raw_data or {}, "Business hours") for t in mail_tests]
+    v["delai reponse mail"] = _format_duration(_avg([s for s in business_seconds if s is not None]))
 
-    v["reponses non recues mail"] = sum(1 for t in mail_tests if not (t.raw_data or {}).get("Return date"))
-    v["reponses recues sup2j mail"] = sum(
-        1 for t in mail_tests
-        if _mail_business_hours(t.raw_data or {}) is not None and _mail_business_hours(t.raw_data or {}) > 16
-    )
+    not_completed_mail = [
+        s for t, s in zip(mail_tests, business_seconds) if not is_test_completed("mail", t.raw_data or {})
+    ]
+    v["reponses non recues mail"] = sum(1 for s in not_completed_mail if s is None)
+    v["reponses recues sup2j mail"] = sum(1 for s in not_completed_mail if s is not None and s > 16 * 3600)
 
-    # -- Internet : taux de disponibilité / note et clics moyens
+    # -- Internet : taux de disponibilité (QS = Completed) / nombre de clics
+    # (partie entière, au sens mathématique, de la moyenne des « Code 5 Obs »).
     web_tests = [t for t in tests if t.channel == "web"]
-    # Aucune colonne de statut d'échec confirmée pour Internet à ce jour :
-    # tous les tests valides sont considérés disponibles (hypothèse à
-    # vérifier en conditions réelles).
-    v["taux disponibilite web"] = _fmt_pct(100.0 if web_tests else None)
-    clicks = [_extract_clicks(t.raw_data or {}) for t in web_tests]
-    v["clics web"] = _fmt_note(_avg(clicks))
+    v["taux disponibilite web"] = _fmt_pct(_completed_pct("web", tests))
+    clicks = [c for c in (_extract_clicks(t.raw_data or {}) for t in web_tests) if c is not None]
+    v["clics web"] = str(math.floor(sum(clicks) / len(clicks))) if clicks else "—"
 
-    # -- Réseaux sociaux : taux de réponse (sous 12h ouvrées) / délai de réponse.
-    # "Test Duration" (confirmé) est un temps réel écoulé, pas des heures
-    # ouvrées à proprement parler (contrairement à "Business hours" pour le
-    # mail) : on le compare néanmoins directement au seuil de 12h, faute de
-    # colonne équivalente convertie en heures ouvrées pour ce canal.
+    # -- Réseaux sociaux : taux de réponse (QS = Completed) / délai de réponse
+    # moyen (moyenne des « Respond Time »).
     rs_tests = [t for t in tests if t.channel == "rs"]
-    durations = [_duration_like_seconds(t.raw_data or {}, "Test Duration") for t in rs_tests]
-    durations = [d for d in durations if d is not None]
-    pct = (
-        round(100 * sum(1 for t in rs_tests if _within_hours(t.raw_data, "Test Duration", 12)) / len(rs_tests))
-        if rs_tests else None
-    )
-    v["taux reponse rs"] = _fmt_pct(pct)
-    v["delai reponse rs"] = _format_duration(_avg(durations))
+    v["taux reponse rs"] = _fmt_pct(_completed_pct("rs", tests))
+    rs_delays = [_duration_like_seconds(t.raw_data or {}, "Respond Time") for t in rs_tests]
+    v["delai reponse rs"] = _format_duration(_avg([d for d in rs_delays if d is not None]))
 
-    # -- Chat : taux de conversations abouties / temps moyens.
-    # Aucune règle de calcul du "taux de conversations abouties" n'a été
-    # précisée : on utilise ici, à titre d'hypothèse à valider, la
-    # proportion de tests exploitables (au moins un critère valide) parmi
-    # tous les tests chat de la portée, comme proxy d'une conversation
-    # effectivement aboutie.
+    # -- Chat : taux de conversations abouties (QS = Completed) / interactions
+    # non répondues (QS Not Completed) / temps de réponse moyen aux demandes
+    # (« Respond Time ») / durée moyenne de la conversation (« Test Duration »).
     chat_tests = [t for t in tests if t.channel == "chat"]
-    if chat_tests:
-        aboutis = sum(1 for t in chat_tests if compute_test_score("chat", t.raw_data or {}) is not None)
-        pct = round(100 * aboutis / len(chat_tests))
-    else:
-        pct = None
-    v["taux conv abouties chat"] = _fmt_pct(pct)
+    v["taux conv abouties chat"] = _fmt_pct(_completed_pct("chat", tests))
+    v["interactions non repondues chat"] = sum(
+        1 for t in chat_tests if not is_test_completed("chat", t.raw_data or {})
+    )
 
     demandes = [_duration_like_seconds(t.raw_data or {}, "Respond Time") for t in chat_tests]
-    demandes = [d for d in demandes if d is not None]
-    v["temps demande chat"] = _format_duration(_avg(demandes))
+    v["temps demande chat"] = _format_duration(_avg([d for d in demandes if d is not None]))
 
     convs = [_duration_like_seconds(t.raw_data or {}, "Test Duration") for t in chat_tests]
-    convs = [d for d in convs if d is not None]
-    v["temps conv chat"] = _format_duration(_avg(convs))
-
-    v["interactions non repondues chat"] = sum(
-        1 for t in chat_tests if _duration_like_seconds(t.raw_data or {}, "Respond Time") is None
-    )
+    v["temps conv chat"] = _format_duration(_avg([d for d in convs if d is not None]))
 
     return v
 

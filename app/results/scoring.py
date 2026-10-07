@@ -366,13 +366,15 @@ def is_test_completed(channel, raw_data):
     (recalcul du canal en excluant les tests marqués en échec) et pour la
     balise "QS phone pct ..." (taux de tests complétés).
 
-    Seuls Phone et Mail ont une colonne QS explicite dans les fichiers de
-    résultats ("Completed" vs vide/"Failed"/"dropped", confirmé). Pour les
-    autres canaux (Web, RS, Chat), aucune colonne équivalente identifiée à
-    ce jour : tous les tests valides sont considérés "complétés" par défaut
-    (donc « Total QS » = « Total » pour ces 3 canaux) — hypothèse à vérifier
-    en conditions réelles.
+    Les 5 canaux ont une colonne QS dans les fichiers de résultats
+    ("Completed" vs "Not completed"/vide/"Failed"/"dropped"). Web, RS et Chat
+    ne l'avaient pas dans les premiers fichiers : s'il n'y a PAS de colonne QS
+    du tout dans les données du test (ancien fichier), le test reste considéré
+    « complété » par défaut. Dès que la colonne existe, une valeur autre que
+    "Completed" (y compris vide) compte comme non complété, comme pour Phone
+    et Mail.
     """
-    if channel in ("phone", "mail"):
-        return str((raw_data or {}).get("QS", "")).strip().lower() == "completed"
-    return True
+    raw_data = raw_data or {}
+    if channel not in ("phone", "mail") and "QS" not in raw_data:
+        return True
+    return str(raw_data.get("QS", "")).strip().lower() == "completed"
