@@ -256,24 +256,28 @@ def compute_scope_values(tests):
     # -- Mail : taux de réponse / délai de réponse / cas d'inaccessibilité.
     # Règles validées par Didier (2026-10) :
     #  - taux de réponse = part des tests QS = Completed ;
-    #  - « Business hours » = délai en heures ouvrées ; « Non observable » (ou
-    #    illisible) = aucune réponse reçue ;
+    #  - temps moyen = moyenne des « Business hours » (heures ouvrées) des tests
+    #    qui ont une vraie durée. Pour ne pas fausser cette moyenne, quand la
+    #    réponse est arrivée après plus de 16 h ouvrées (2 jours), le fichier
+    #    saisit « Non observable » dans Business hours au lieu de la durée ;
     #  - réponses reçues > 2 jours ouvrés = tests QS Not Completed ET Business
-    #    hours > 16 h ;
-    #  - réponses non reçues = tests QS Not Completed ET Business hours non
-    #    observable ;
-    #  - temps moyen = moyenne des Business hours (tous les tests qui en ont un).
+    #    hours = « Non observable » ;
+    #  - réponses non reçues = les AUTRES tests QS Not Completed (Business hours
+    #    renseignée par défaut ou vide : aucune réponse n'est arrivée). Les deux
+    #    compteurs se partagent ainsi les tests Not Completed, sans double compte.
     mail_tests = [t for t in tests if t.channel == "mail"]
     v["taux reponse mail"] = _fmt_pct(_completed_pct("mail", tests))
 
     business_seconds = [_duration_like_seconds(t.raw_data or {}, "Business hours") for t in mail_tests]
     v["delai reponse mail"] = _format_duration(_avg([s for s in business_seconds if s is not None]))
 
-    not_completed_mail = [
-        s for t, s in zip(mail_tests, business_seconds) if not is_test_completed("mail", t.raw_data or {})
+    not_completed_mail = [t for t in mail_tests if not is_test_completed("mail", t.raw_data or {})]
+    late_mail = [
+        t for t in not_completed_mail
+        if str(_lookup(t.raw_data or {}, "Business hours") or "").strip().lower() == "non observable"
     ]
-    v["reponses non recues mail"] = sum(1 for s in not_completed_mail if s is None)
-    v["reponses recues sup2j mail"] = sum(1 for s in not_completed_mail if s is not None and s > 16 * 3600)
+    v["reponses recues sup2j mail"] = len(late_mail)
+    v["reponses non recues mail"] = len(not_completed_mail) - len(late_mail)
 
     # -- Internet : taux de disponibilité (QS = Completed) / nombre de clics
     # (partie entière, au sens mathématique, de la moyenne des « Code 5 Obs »).
