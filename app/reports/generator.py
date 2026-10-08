@@ -18,7 +18,8 @@ ligne — vert si supérieur, rouge si inférieur, aucune couleur en cas
 d'égalité stricte ou de donnée manquante. Exception (diapo 13, tableaux phone
 par jour / créneau « Temporalité » et « Qualité de service ») : seule la ligne
 du participant est colorée (comparée à la même colonne de la ligne « tous ») ;
-les trois autres lignes restent en noir, voir _apply_color. On réutilise directement les
+les trois autres lignes restent en noir, voir _apply_color. Autre exception (diapo 21,
+web) : le nombre de clics (« clics web ... », 4 portées) est toujours en noir. On réutilise directement les
 valeurs déjà formatées (pas de dictionnaire de valeurs brutes séparé) : la
 diapositive n'a jamais qu'un seul type de grandeur par ligne (note, %, ou
 durée), donc reparser le texte affiché suffit et évite de dupliquer tout
@@ -39,6 +40,11 @@ COLOR_CODED_SLIDES = {13, 15, 19, 21, 23, 27, 31}  # numéros 1-indexés
 COLOR_GOOD = RGBColor(0x1E, 0x8E, 0x3E)
 COLOR_BAD = RGBColor(0xC0, 0x1C, 0x28)
 COLOR_NEUTRAL = RGBColor(0x00, 0x00, 0x00)
+
+# Diapo 21 (web) : le nombre de clics n'est jamais coloré vert/rouge, pour aucune portée
+# (vous / catégorie / ensemble des participants / ensemble des lauréats) : ce n'est pas
+# une valeur « plus haut = mieux », donc toujours en noir.
+WEB_CLICKS_RE = re.compile(r"^clics web (vous|categorie|tous|laureats)$")
 
 PHONE_SLOT_RE = re.compile(r"^(note|pct) (?:jour|horaire) \w+ phone (vous|categorie|tous|laureats)$")
 
@@ -86,7 +92,7 @@ def _color_counterpart_tag(normalized_tag):
     phone ... », partie gauche de la diapo 13) sont explicitement exclus :
     confirmé, pas de coloration vert/rouge sur ces durées, uniquement sur
     les notes/pourcentages de la partie droite."""
-    if normalized_tag.startswith("temps "):
+    if normalized_tag.startswith("temps ") or WEB_CLICKS_RE.match(normalized_tag):
         return None
     # Diapo 13, tableaux « Temporalité » (notes) et « Qualité de service » (QS)
     # par jour / créneau : SEULE la ligne du participant (« vous ») est
@@ -178,6 +184,10 @@ def _apply_color(paragraph, lookup, original_text):
     if not m:
         return
     tag = _normalize(m.group(1))
+    if WEB_CLICKS_RE.match(tag):
+        # Affiché en noir même si le modèle y code du vert / rouge en dur.
+        _paint(paragraph, COLOR_NEUTRAL)
+        return
     tous_tag = _color_counterpart_tag(tag)
     is_phone_slot = _phone_slot_parts(tag) is not None
     if tous_tag is None:
