@@ -11,10 +11,11 @@ balises {{ ... }} texte :
   (voir _ranking_window), avec sa barre mise en évidence à sa vraie
   position.
 - diapositive 5 : texte "Classement Xème" (classement global de l'édition).
-- diapositives 6/9/12/15/18 : répartition dynamique des critères en 2
-  colonnes (verte à gauche / rouge à droite) selon que la note du critère,
-  ramenée sur 20, est supérieure ou égale (vert) ou inférieure (rouge) à la
-  note globale du canal pour ce participant.
+- diapositives 8/13/16/19/22 (« Focus » par canal) : répartition dynamique
+  des critères listés dans le modèle en 2 colonnes (verte à gauche / rouge à
+  droite) selon que la note du participant sur le critère est supérieure ou
+  égale (vert) ou inférieure (rouge) à la note moyenne de ce critère pour tous
+  les participants de l'édition (voir apply_criteria_split).
 
 Ces graphiques sont des graphiques 3D (bar3DChart), un type non supporté
 par l'API haut niveau de python-pptx (chart.plots/series lèvent une
@@ -39,7 +40,7 @@ COMPARISON_SLIDE_BY_SCOPE = {"global": 4, "phone": 5, "mail": 8, "web": 11, "rs"
 
 # Diapositive (0-based) portant la répartition verte/rouge des critères,
 # une par canal (la diapo globale n'a pas de détail par critère).
-CRITERIA_SLIDE_BY_CHANNEL = {"phone": 6, "mail": 9, "web": 12, "rs": 15, "chat": 18}
+CRITERIA_SLIDE_BY_CHANNEL = {"phone": 7, "mail": 12, "web": 15, "rs": 18, "chat": 21}
 
 # Nom court par code de critère et par canal, repris tel quel des étiquettes
 # déjà utilisées dans le mapping d'importance du rapport d'étude (voir
@@ -426,88 +427,179 @@ def apply_classement_text(prs, participant, cache):
 
 # --------------------------------------------------- Répartition des critères
 
-CRITERION_LINE_RE = re.compile(r"^C\d+\s")
+CRITERION_LINE_RE = re.compile(r"^C(\d+)\s+(.+)$")
+
+# Couleurs de repli si le modèle n'en code aucune dans ses listes (vert / rouge des carrés du modèle).
+DEFAULT_GREEN_HEX = "B1CD2B"
+DEFAULT_RED_HEX = "FF0000"
+
+
+def _paragraph_text(paragraph):
+    return "".join(run.text for run in paragraph.runs)
+
+
+def _group_squares(slide):
+    """Rectangles ABSOLUS (left, top, width, height) du carré vert (gauche) et du carré rouge (droite) : les 2
+    formes libres du groupe de la diapositive, dont les coordonnées sont locales au groupe (échelle chExt/ext)."""
+    group = next((s for s in slide.shapes if s.shape_type == MSO_SHAPE_TYPE.GROUP), None)
+    if group is None:
+        return None, None
+    xfrm = group._element.find(".//" + qn("a:xfrm"))
+    off, ext = xfrm.find(qn("a:off")), xfrm.find(qn("a:ext"))
+    ch_off, ch_ext = xfrm.find(qn("a:chOff")), xfrm.find(qn("a:chExt"))
+    sx = int(ext.get("cx")) / int(ch_ext.get("cx"))
+    sy = int(ext.get("cy")) / int(ch_ext.get("cy"))
+    rects = []
+    for child in group.shapes:
+        rects.append((
+            round(int(off.get("x")) + (child.left - int(ch_off.get("x"))) * sx),
+            round(int(off.get("y")) + (child.top - int(ch_off.get("y"))) * sy),
+            round(child.width * sx), round(child.height * sy),
+        ))
+    if len(rects) != 2:
+        return None, None
+    rects.sort(key=lambda r: r[0])
+    return rects[0], rects[1]
 
 
 def _find_criteria_boxes(slide):
-    """Les 2 encarts de critères (vert à gauche / rouge à droite) sont les
-    2 formes automatiques non vides les plus BASSES de la diapo (les 2
-    encarts statistiques "XX%" sont toujours positionnés au-dessus) —
-    identification par position plutôt que par contenu texte actuel,
-    puisque l'encart rose peut être vide dans le modèle d'origine (ex.
-    Internet : simple "-")."""
-    candidates = [
-        s for s in slide.shapes
-        if s.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE
-        and getattr(s, "has_text_frame", False)
-        and s.text_frame.text.strip()
-    ]
-    candidates.sort(key=lambda s: s.top, reverse=True)
-    boxes = candidates[:2]
-    if len(boxes) != 2:
+    """Les 2 listes de critères (vert à gauche / rouge à droite) : les formes automatiques dont TOUS les
+    paragraphes non vides sont de la forme « C<n> <nom> », ou dont le seul contenu est « - » (liste vide dans le
+    modèle, ex. Internet). Repérées par leur contenu plutôt que par leur position, puisque les modèles de
+    restitution changent de mise en page."""
+    candidates = []
+    for s in slide.shapes:
+        if s.shape_type != MSO_SHAPE_TYPE.AUTO_SHAPE or not getattr(s, "has_text_frame", False):
+            continue
+        paragraphs = [p for p in s.text_frame.paragraphs if _paragraph_text(p).strip()]
+        if not paragraphs:
+            continue
+        if all(CRITERION_LINE_RE.match(_paragraph_text(p).strip()) for p in paragraphs) or s.text_frame.text.strip() == "-":
+            candidates.append(s)
+    if len(candidates) != 2:
         return None, None
-    boxes.sort(key=lambda s: s.left)
-    return boxes[0], boxes[1]  # (vert/gauche, rouge/droite)
+    candidates.sort(key=lambda s: s.left)
+    return candidates[0], candidates[1]
 
 
-def _rebuild_criteria_list(shape, items):
-    """items : liste de (code, nom_court). Reconstruit les paragraphes de
-    la forme en clonant la mise en forme (2 runs : code en gras + nom,
-    couleur déjà réglée dans le modèle) de son PREMIER paragraphe existant
-    — le nombre de critères affichés varie par participant, donc le nombre
-    de paragraphes doit être reconstruit à chaque génération."""
-    tf = shape.text_frame
-    paragraphs = tf.paragraphs
-    if not paragraphs:
-        return
-    template_el = deepcopy(paragraphs[0]._p)
-    txbody = tf._txBody
-    for p in list(paragraphs):
+def _box_items(shape):
+    """[(code, nom)] des lignes « C<n> <nom> » d'une liste, dans l'ordre du modèle."""
+    items = []
+    for p in shape.text_frame.paragraphs:
+        m = CRITERION_LINE_RE.match(_paragraph_text(p).strip())
+        if m:
+            items.append((int(m.group(1)), m.group(2).strip()))
+    return items
+
+
+def _first_criterion_paragraph(shape):
+    return next((p for p in shape.text_frame.paragraphs if CRITERION_LINE_RE.match(_paragraph_text(p).strip())), None)
+
+
+def _box_color_hex(shape, fallback):
+    """Couleur (hex) du texte de la liste, lue dans son premier paragraphe : celle que le modèle y a réglée."""
+    for p in shape.text_frame.paragraphs:
+        for run_el in p._p.findall(qn("a:r")):
+            clr = run_el.find(f"{qn('a:rPr')}/{qn('a:solidFill')}/{qn('a:srgbClr')}")
+            if clr is not None:
+                return clr.get("val")
+    return fallback
+
+
+def _set_paragraph_color(paragraph_el, color_hex):
+    for run_el in paragraph_el.findall(qn("a:r")):
+        rpr = run_el.find(qn("a:rPr"))
+        if rpr is None:
+            continue
+        fill = rpr.find(qn("a:solidFill"))
+        if fill is not None:
+            rpr.remove(fill)
+        fill = etree.SubElement(rpr, qn("a:solidFill"))
+        etree.SubElement(fill, qn("a:srgbClr")).set("val", color_hex)
+        rpr.insert(0, fill)  # a:solidFill doit précéder a:latin dans a:rPr
+
+
+def _rebuild_criteria_list(shape, items, template_p_el, color_hex):
+    """items : liste de (code, nom). Reconstruit les paragraphes de la forme en clonant un paragraphe modèle
+    (2 runs : code en gras + nom), recolorié dans la couleur de la liste. Liste vide : un seul « - » (comme le
+    modèle d'origine)."""
+    txbody = shape.text_frame._txBody
+    for p in list(shape.text_frame.paragraphs):
         txbody.remove(p._p)
-    for code, name in items:
-        new_el = deepcopy(template_el)
+    if not items:
+        new_el = deepcopy(template_p_el)
         runs = new_el.findall(qn("a:r"))
         if len(runs) >= 2:
-            t0 = runs[0].find(qn("a:t"))
-            t1 = runs[1].find(qn("a:t"))
-            if t0 is not None:
-                t0.text = f"C{code} "
-            if t1 is not None:
-                t1.text = name
-            for extra in runs[2:]:
-                new_el.remove(extra)
+            new_el.remove(runs[0])
+            runs = runs[1:]
+        runs[0].find(qn("a:t")).text = "-"
+        _set_paragraph_color(new_el, color_hex)
+        txbody.append(new_el)
+        return
+    for code, name in items:
+        new_el = deepcopy(template_p_el)
+        runs = new_el.findall(qn("a:r"))
+        runs[0].find(qn("a:t")).text = f"C{code} "
+        runs[1].find(qn("a:t")).text = name
+        for extra in runs[2:]:
+            new_el.remove(extra)
+        _set_paragraph_color(new_el, color_hex)
         txbody.append(new_el)
 
 
+def _place_box(shape, square, n_lines, line_height):
+    """Centre la liste dans son carré (largeur du carré, hauteur = nb de lignes x interligne)."""
+    left, top, width, height = square
+    shape.width = width
+    shape.left = left
+    shape.height = max(1, n_lines) * line_height
+    shape.top = round(top + (height - shape.height) / 2)
+
+
 def apply_criteria_split(prs, channel, values):
-    """values : dict de build_participant_placeholders. Répartit tous les
-    critères du canal en 2 groupes selon que leur note (ramenée sur 20)
-    est >= (vert, gauche) ou < (rouge, droite) la note globale du canal
-    pour ce participant (scope "vous" des deux côtés)."""
+    """values : dict de build_participant_placeholders. Répartit les critères listés dans le modèle (les lignes
+    « C<n> <nom> » des 2 listes) entre le carré vert et le carré rouge, d'après la note du participant sur ce
+    critère comparée à la note moyenne du critère pour TOUS les participants de l'édition (tests QS = Completed,
+    comme les colonnes « vous » et « tous » du rapport) :
+    - note du participant >= moyenne de tous (arrondies à 2 décimales, comme affichées) -> vert, liste de gauche ;
+    - sinon -> rouge, liste de droite.
+    Un critère sans note exploitable (« Non observable » partout) pour le participant, ou sans moyenne, n'est
+    placé dans aucun des deux carrés."""
     slide_idx = CRITERIA_SLIDE_BY_CHANNEL.get(channel)
     if slide_idx is None or slide_idx >= len(prs.slides):
         return
     slide = prs.slides[slide_idx]
     green_box, red_box = _find_criteria_boxes(slide)
-    if green_box is None or red_box is None:
+    green_sq, red_sq = _group_squares(slide)
+    if green_box is None or red_box is None or green_sq is None:
         return
 
-    channel_note_20 = _as_float(values.get(f"Total {channel} note vous"))
-    if channel_note_20 is None:
+    # liste de départ = tous les critères présents dans le modèle, dans l'ordre du récapitulatif des critères du canal
+    master = dict(_box_items(green_box) + _box_items(red_box))
+    order = {code: i for i, code in enumerate(CRITERIA_BY_CHANNEL[channel])}
+    codes = sorted(master, key=lambda c: order.get(c, 99))
+
+    template_p = _first_criterion_paragraph(green_box) or _first_criterion_paragraph(red_box)
+    if template_p is None:
         return
+    green_hex = _box_color_hex(green_box, DEFAULT_GREEN_HEX)
+    red_hex = _box_color_hex(red_box, DEFAULT_RED_HEX)
+    reference = green_box if len(green_box.text_frame.paragraphs) >= len(red_box.text_frame.paragraphs) else red_box
+    line_height = round(reference.height / max(1, len(reference.text_frame.paragraphs)))
+    template_el = deepcopy(template_p._p)
 
     green_items, red_items = [], []
-    for code in CRITERIA_BY_CHANNEL[channel]:
-        raw_note = _as_float(values.get(f"C{code} {channel} note vous"))
-        if raw_note is None:
+    for code in codes:
+        vous = _as_float(values.get(f"C{code} {channel} note vous"))
+        tous = _as_float(values.get(f"C{code} {channel} note tous"))
+        if vous is None or tous is None:
             continue
-        weight = 2 if code == DOUBLED_CODE_BY_CHANNEL.get(channel) else 1
-        note_20 = raw_note / (2 * weight) * 20
-        name = CRITERION_SHORT_NAMES[channel][code]
-        (green_items if note_20 >= channel_note_20 else red_items).append((code, name))
+        (green_items if round(vous, 2) >= round(tous, 2) else red_items).append((code, master[code]))
 
-    _rebuild_criteria_list(green_box, green_items)
-    _rebuild_criteria_list(red_box, red_items)
+    _rebuild_criteria_list(green_box, green_items, template_el, green_hex)
+    _rebuild_criteria_list(red_box, red_items, template_el, red_hex)
+    _place_box(green_box, green_sq, len(green_items), line_height)
+    _place_box(red_box, red_sq, len(red_items), line_height)
 
 
 # ---------------------------------------------------------------- Point d'entrée
