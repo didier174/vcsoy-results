@@ -53,7 +53,7 @@ def _render_report(**kwargs):
     defaults = dict(
         edition=edition, active_item=ACTIVE_ITEM, menu_items=MENU_ITEMS,
         success=False, global_error=None, errors=[], filename=None,
-        added=0, updated=0, total=0, invalid_channels={},
+        added=0, updated=0, total=0, invalid_channels={}, overwrite_warnings=[],
     )
     defaults.update(kwargs)
     return render_template("results/report.html", **defaults)
@@ -185,10 +185,18 @@ def upload_file():
         return _render_report(success=False, errors=errors, filename=filename, invalid_channels=invalid_channels_view)
 
     existing_by_test_id = {tr.test_id: tr for tr in TestResult.query.filter_by(edition_id=edition_id).all()}
+    participant_names = {p.id: p.participant_name for p in participants}
     added, updated = 0, 0
+    # Un test est identifié par son seul ID : charger un fichier qui contient l'ID d'un test venant d'un AUTRE
+    # fichier l'écrase sans erreur (ex. lignes d'un autre participant laissées dans l'onglet Chat). On le
+    # signale à l'utilisateur après coup, regroupé par fichier d'origine / onglet / participant.
+    overwritten = {}
     for row in valid_rows:
         existing = existing_by_test_id.get(row["test_id"])
         if existing:
+            if existing.source_filename and existing.source_filename != filename:
+                key = (existing.source_filename, row["sheet"], participant_names.get(existing.participant_id, "?"))
+                overwritten.setdefault(key, []).append(row["test_id"])
             existing.channel = row["channel"]
             existing.category_id = row["category_id"]
             existing.participant_id = row["participant_id"]
@@ -220,12 +228,25 @@ def upload_file():
     ))
     db.session.commit()
 
+    overwrite_warnings = [
+        {"source": src, "sheet": sheet, "participant": name, "count": len(ids), "first_id": min(ids), "last_id": max(ids)}
+        for (src, sheet, name), ids in sorted(overwritten.items())
+    ]
     _log(
         "Chargement fichier résultat — succès",
         details=f"{filename} : {added} ajouté(s), {updated} mis à jour (édition {edition_id})",
     )
+    if overwrite_warnings:
+        total_overwritten = sum(w["count"] for w in overwrite_warnings)
+        _log(
+            "Chargement fichier résultat — tests d'un autre fichier écrasés",
+            details=f"{filename} : {total_overwritten} test(s) venant d'un autre fichier remplacés (édition {edition_id})",
+        )
 
-    return _render_report(success=True, filename=filename, added=added, updated=updated, total=len(valid_rows))
+    return _render_report(
+        success=True, filename=filename, added=added, updated=updated, total=len(valid_rows),
+        overwrite_warnings=overwrite_warnings,
+    )
 
 
 # --------------------------------------------- Compilation des résultats

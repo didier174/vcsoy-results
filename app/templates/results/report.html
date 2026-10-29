@@ -15,6 +15,24 @@
         ({{ added }} ajouté(s), {{ updated }} mis à jour).
       </p>
     </div>
+    {% if overwrite_warnings %}
+      <div class="upload-card">
+        <p class="flash flash-error">
+          Attention : ce fichier contient des tests qui existaient déjà et provenaient d'un AUTRE fichier.
+          Ils ont été remplacés par les valeurs de « {{ filename }} ». Si ce n'est pas voulu, retirez ces lignes
+          du fichier (ou annulez-le) et rechargez le bon fichier.
+        </p>
+        <ul class="error-report-list">
+          {% for w in overwrite_warnings %}
+            <li>
+              {{ w.count }} test(s) du participant {{ w.participant }} (onglet {{ w.sheet }},
+              ID {{ w.first_id }}{% if w.count > 1 %} à {{ w.last_id }}{% endif %})
+              venant de « {{ w.source }} » remplacé(s) par « {{ filename }} ».
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
   {% else %}
     <div class="upload-card">
       <p class="flash flash-error">
