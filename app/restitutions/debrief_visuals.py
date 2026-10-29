@@ -3,14 +3,14 @@ Met à jour les éléments visuels spécifiques au modèle de « Restitution »
 (présentation de debrief par participant), qui ne sont pas de simples
 balises {{ ... }} texte :
 
-- diapositives 5/6/9/12/15/18 : graphique de comparaison (Vous / Catégorie /
+- diapositives 6/7/12/15/18/21 : graphique de comparaison (Vous / Catégorie /
   Ensemble des participants / Lauréats), note globale et par canal.
-- diapositives 5/6/9/12/15/18 : graphique de classement (classement sur
+- diapositives 6/7/12/15/18/21 : graphique de classement (classement sur
   l'ensemble de l'édition, tous canaux confondus pour la diapo globale,
   canal par canal ensuite), sans trou entre le rang 1 et le participant
   (voir _ranking_window), avec sa barre mise en évidence à sa vraie
   position.
-- diapositive 5 : texte "Classement Xème" (classement global de l'édition).
+- diapositive 6 : texte "Classement Xème" (classement global de l'édition).
 - diapositives 8/13/16/19/22 (« Focus » par canal) : répartition dynamique
   des critères listés dans le modèle en 2 colonnes (verte à gauche / rouge à
   droite) selon que la note du participant sur le critère est supérieure ou
@@ -36,7 +36,12 @@ from app.results.scoring import CRITERIA_BY_CHANNEL, DOUBLED_CODE_BY_CHANNEL
 
 # Diapositive (0-based) portant le graphique de comparaison + le graphique
 # de classement pour chaque portée (note globale, puis chaque canal).
-COMPARISON_SLIDE_BY_SCOPE = {"global": 4, "phone": 5, "mail": 8, "web": 11, "rs": 14, "chat": 17}
+COMPARISON_SLIDE_BY_SCOPE = {"global": 5, "phone": 6, "mail": 11, "web": 14, "rs": 17, "chat": 20}
+
+# Libellé d'une catégorie du graphique de comparaison (« Catégorie » dans le modèle français, « Category » dans
+# le modèle anglais) : sert à repérer ce graphique ; le graphique de classement est repéré par « Participant »
+# (identique dans les deux langues).
+COMPARISON_CHART_MARKERS = ("Catégorie", "Category")
 
 # Diapositive (0-based) portant la répartition verte/rouge des critères,
 # une par canal (la diapo globale n'a pas de détail par critère).
@@ -107,8 +112,10 @@ def _as_float(value):
 def _find_chart_ser_by_marker(slide, marker):
     """Retourne (chartspace, ser, cat_strCache, val_numCache) du premier
     graphique de la diapo dont au moins une catégorie contient `marker`
-    (ex. "Catégorie" pour le graphique de comparaison, "Participant" pour
-    le classement)."""
+    (ex. "Catégorie" / "Category" pour le graphique de comparaison,
+    "Participant" pour le classement) ; `marker` peut être un texte ou un
+    tuple de textes (un par langue des modèles de restitution)."""
+    markers = (marker,) if isinstance(marker, str) else tuple(marker)
     for shape in slide.shapes:
         if not getattr(shape, "has_chart", False):
             continue
@@ -123,7 +130,7 @@ def _find_chart_ser_by_marker(slide, marker):
         if cat is None:
             continue
         cat_values = [v.text or "" for v in cat.findall(f".//{qn('c:v')}")]
-        if any(marker in v for v in cat_values):
+        if any(m in v for m in markers for v in cat_values):
             strcache = cat.find(f".//{qn('c:strCache')}")
             val_el = ser.find(qn("c:val"))
             numcache = val_el.find(f".//{qn('c:numCache')}") if val_el is not None else None
@@ -267,7 +274,7 @@ def apply_comparison_charts(prs, values):
         if slide_idx >= len(prs.slides):
             continue
         slide = prs.slides[slide_idx]
-        chartspace, _, _, numcache = _find_chart_ser_by_marker(slide, "Catégorie")
+        chartspace, _, _, numcache = _find_chart_ser_by_marker(slide, COMPARISON_CHART_MARKERS)
         if numcache is None:
             continue
 
@@ -395,10 +402,23 @@ def _ordinal_fr(n):
     return f"{n}er" if n == 1 else f"{n}ème"
 
 
+def _ordinal_suffix(n, lang):
+    """Suffixe seul du rang (« er »/« ème », ou « st »/« nd »/« rd »/« th » en anglais : 11, 12 et 13 prennent « th »)."""
+    if lang == "en":
+        if n % 100 in (11, 12, 13):
+            return "th"
+        return {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return "er" if n == 1 else "ème"
+
+
+RANK_TEXT_RE = re.compile(r"^(Classement|Rank)\s+XX")
+
+
 def apply_classement_text(prs, participant, cache):
-    """Diapositive 5 (globale) : remplace le texte "Classement XXème" par
-    le classement réel du participant sur l'ensemble des participants de
-    l'édition (note consolidée)."""
+    """Diapositive 6 (globale) : remplace le texte « Classement XXème » (« Rank XXth » dans le modèle anglais) par
+    le classement réel du participant sur l'ensemble des participants de l'édition (note consolidée). Le texte du
+    modèle est en 3 morceaux de styles différents (« Classement » / « XX » en grand et en couleur / suffixe en
+    exposant) : on ne remplace que le contenu des morceaux, pour conserver leur mise en forme."""
     slide_idx = COMPARISON_SLIDE_BY_SCOPE["global"]
     if slide_idx >= len(prs.slides):
         return
@@ -407,6 +427,7 @@ def apply_classement_text(prs, participant, cache):
     pos = next((i for i, r in enumerate(ranking) if r["participant_id"] == participant.id), None)
     if pos is None:
         return
+    rank = pos + 1
 
     for shape in slide.shapes:
         if not getattr(shape, "has_text_frame", False):
@@ -414,14 +435,26 @@ def apply_classement_text(prs, participant, cache):
         cnv_pr = shape._element.find(f".//{qn('p:cNvPr')}")
         if cnv_pr is not None and cnv_pr.get("hidden") == "1":
             continue  # formes de brouillon invisibles (ex. "Classement / <4"), pas le vrai texte
-        if "Classement XX" not in shape.text_frame.text:
+        match = RANK_TEXT_RE.match(shape.text_frame.text)
+        if not match:
             continue
+        lang = "en" if match.group(1) == "Rank" else "fr"
         paragraph = shape.text_frame.paragraphs[0]
-        if not paragraph.runs:
+        runs = paragraph.runs
+        if not runs:
             continue
-        paragraph.runs[0].text = f"Classement {_ordinal_fr(pos + 1)} "
-        for run in paragraph.runs[1:]:
-            run.text = ""
+        xx_idx = next((i for i, r in enumerate(runs) if r.text.strip() == "XX"), None)
+        if xx_idx is not None:
+            runs[xx_idx].text = str(rank)
+            if xx_idx + 1 < len(runs):
+                runs[xx_idx + 1].text = _ordinal_suffix(rank, lang) + " "
+                for extra in runs[xx_idx + 2:]:
+                    extra.text = ""
+        else:  # texte d'un seul bloc (ancien modèle) : on le réécrit en entier
+            label = "Rank" if lang == "en" else "Classement"
+            runs[0].text = f"{label} {rank}{_ordinal_suffix(rank, lang)} "
+            for run in runs[1:]:
+                run.text = ""
         break
 
 
